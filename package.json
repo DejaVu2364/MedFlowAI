@@ -12,7 +12,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "@google/genai": "^1.29.0",
-    "react-textarea-autosize": "^8.5.9"
+    "react-textarea-autosize": "^8.5.9",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

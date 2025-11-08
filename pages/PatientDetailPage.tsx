@@ -1,10 +1,11 @@
-
 import React, { useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { AppContext } from '../App';
 import { AppContextType, Patient, User, TriageLevel, Order, Vitals, OrderStatus, OrderCategory, ClinicalFileSections, Allergy, HistorySectionData, GPESectionData, SystemicExamSectionData, SystemicExamSystemData, AISuggestionHistory, OrderPriority, Round, Result, VitalsRecord, VitalsMeasurements } from '../types';
 import { SparklesIcon, CheckBadgeIcon, InformationCircleIcon, DocumentDuplicateIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, PaperAirplaneIcon, PencilIcon, BeakerIcon, FilmIcon, PillIcon, ClipboardDocumentListIcon, UserCircleIcon, SearchIcon, PlusIcon } from '../components/icons';
 import TextareaAutosize from 'react-textarea-autosize';
 import { generateSOAPForRound, summarizeChangesSinceLastRound } from '../services/geminiService';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+
 
 const TriageBadge: React.FC<{ level: TriageLevel }> = React.memo(({ level }) => {
     const baseClasses = "px-2.5 py-1 text-xs font-semibold rounded-full inline-block";
@@ -1446,11 +1447,78 @@ const VitalsList: React.FC<{ vitalsHistory: VitalsRecord[] }> = React.memo(({ vi
     );
 });
 
-const VitalsChartPanel: React.FC = React.memo(() => {
+const VitalsChartPanel: React.FC<{ vitalsHistory: VitalsRecord[] }> = React.memo(({ vitalsHistory }) => {
+    const [timeRangeHours, setTimeRangeHours] = useState(24);
+
+    const chartData = useMemo(() => {
+        const now = Date.now();
+        const timeCutoff = now - timeRangeHours * 60 * 60 * 1000;
+
+        return vitalsHistory
+            .filter(record => new Date(record.recordedAt).getTime() > timeCutoff)
+            .map(record => ({
+                time: new Date(record.recordedAt).getTime(),
+                formattedTime: new Date(record.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                ...record.measurements
+            }))
+            .sort((a, b) => a.time - b.time); // Ensure data is chronological
+    }, [vitalsHistory, timeRangeHours]);
+
+    const renderChart = (dataKey: keyof VitalsMeasurements, title: string, color: string, domain: [number, number], referenceLine?: { y: number, label: string }) => {
+        const relevantData = chartData.filter(d => d[dataKey] != null);
+        if (relevantData.length < 2) {
+            return (
+                <div className="h-64 flex items-center justify-center bg-background-secondary rounded-lg">
+                    <p className="text-sm text-text-tertiary">Not enough data for {title} in this time range.</p>
+                </div>
+            );
+        }
+        return (
+            <div>
+                <h4 className="font-semibold text-text-secondary mb-2">{title}</h4>
+                <div className="h-64">
+                     <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={relevantData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.2)" />
+                            <XAxis dataKey="formattedTime" tick={{ fontSize: 12, fill: 'rgb(var(--color-text-tertiary))' }} />
+                            <YAxis domain={domain} tick={{ fontSize: 12, fill: 'rgb(var(--color-text-tertiary))' }} />
+                            <Tooltip
+                                contentStyle={{
+                                    backgroundColor: 'rgb(var(--color-background-primary))',
+                                    borderColor: 'rgb(var(--color-border-color))'
+                                }}
+                                labelStyle={{ color: 'rgb(var(--color-text-primary))' }}
+                            />
+                            {referenceLine && <ReferenceLine y={referenceLine.y} label={{ value: referenceLine.label, position: 'insideTopLeft', fill: 'rgb(229, 62, 62)', fontSize: 12 }} stroke="rgb(229, 62, 62)" strokeDasharray="3 3" />}
+                            <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+        );
+    };
+
     return (
-        <div className="bg-background-primary p-8 rounded-lg shadow-sm border border-border-color text-center text-text-tertiary">
-            <h4 className="font-semibold mb-2 text-text-secondary">Vitals Trend Chart</h4>
-            <p>(Interactive time-series charts would be displayed here)</p>
+        <div className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4">
+                <h4 className="font-semibold text-text-secondary">Vitals Trend Chart</h4>
+                <div className="flex gap-1 bg-background-tertiary p-1 rounded-md">
+                    {[24, 48, 72].map(hours => (
+                         <button
+                            key={hours}
+                            onClick={() => setTimeRangeHours(hours)}
+                            className={`px-3 py-1 text-xs font-semibold rounded ${timeRangeHours === hours ? 'bg-background-primary shadow-sm text-brand-blue' : 'text-text-secondary hover:bg-background-primary/50'}`}
+                        >
+                            {hours}h
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="space-y-6">
+                {renderChart('temp_c', 'Temperature (°C)', '#ef4444', [35, 41], { y: 38.0, label: "Fever" })}
+                {renderChart('pulse', 'Pulse (bpm)', '#3b82f6', [40, 160], { y: 120, label: "Tachy" })}
+                {renderChart('spo2', 'SpO₂ (%)', '#22c55e', [88, 101], { y: 92, label: "Low" })}
+            </div>
         </div>
     );
 });
@@ -1538,7 +1606,7 @@ const VitalsTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
                     <VitalsAlertsPanel measurements={latestVitals?.measurements} />
                 </div>
                 <div className="lg:col-span-2 space-y-6">
-                    <VitalsChartPanel />
+                    <VitalsChartPanel vitalsHistory={patient.vitalsHistory} />
                     <VitalsList vitalsHistory={patient.vitalsHistory} />
                 </div>
             </div>
