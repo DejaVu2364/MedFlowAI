@@ -1,26 +1,19 @@
-
-
 import React, { useContext } from 'react';
 import { AppContext } from '../App';
 import { AppContextType } from '../types';
-import { UserCircleIcon, ClipboardDocumentListIcon, HomeIcon, ChatBubbleLeftRightIcon, SunIcon, MoonIcon } from './icons';
+import { UserCircleIcon, ClipboardDocumentListIcon, HomeIcon, ChatBubbleLeftRightIcon, SunIcon, MoonIcon, BeakerIcon } from './icons';
 
 interface HeaderProps {
     onToggleChat: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
-    const { currentUser, page, setPage, selectedPatientId, theme, toggleTheme } = useContext(AppContext) as AppContextType;
-
-    // Triage button should only be enabled if a patient is selected from the dashboard first.
-    // This logic is now handled by the triage buttons on the patient cards.
-    // The nav button can act as a shortcut if a patient is already selected.
-    const isTriageDisabled = page !== 'triage' && !selectedPatientId;
+    const { currentUser, page, setPage, theme, toggleTheme } = useContext(AppContext) as AppContextType;
 
     const navItems = [
         { name: 'Dashboard', page: 'dashboard', icon: <HomeIcon /> },
         { name: 'Reception', page: 'reception', icon: <ClipboardDocumentListIcon /> },
-        // { name: 'Triage', page: 'triage', icon: <BeakerIcon />, disabled: isTriageDisabled },
+        { name: 'Triage', page: 'triage', icon: <BeakerIcon /> },
     ];
 
     return (

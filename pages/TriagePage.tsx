@@ -1,11 +1,9 @@
-
 import React, { useContext, useEffect, useState } from 'react';
 import { AppContext } from '../App';
 import { AppContextType, Patient, Vitals } from '../types';
 
-const TriagePage: React.FC = () => {
-    const { patients, selectedPatientId, updatePatientVitals, isLoading, setPage, setSelectedPatientId } = useContext(AppContext) as AppContextType;
-    const [patient, setPatient] = useState<Patient | null>(null);
+const TriageForm: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const { updatePatientVitals, isLoading, setPage, setSelectedPatientId } = useContext(AppContext) as AppContextType;
     const [vitals, setVitals] = useState<Vitals>({
         hr: 0,
         bpSys: 0,
@@ -14,16 +12,6 @@ const TriagePage: React.FC = () => {
         spo2: 0,
         temp: 0,
     });
-
-    useEffect(() => {
-        if (selectedPatientId) {
-            const currentPatient = patients.find(p => p.id === selectedPatientId);
-            setPatient(currentPatient || null);
-        } else {
-            // If this page is loaded without a selected patient, redirect to the dashboard.
-            setPage('dashboard');
-        }
-    }, [selectedPatientId, patients, setPage]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -35,16 +23,18 @@ const TriagePage: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!patient) return;
         await updatePatientVitals(patient.id, vitals);
     };
 
-    if (!patient) {
-        return <div className="text-center p-10">No patient selected for triage. Redirecting...</div>;
-    }
+    const handleBack = () => {
+        setSelectedPatientId(null);
+    };
 
     return (
         <div className="max-w-4xl mx-auto">
+            <button onClick={handleBack} className="mb-4 text-sm text-brand-blue hover:underline">
+                &larr; Back to Triage List
+            </button>
             <div className="bg-background-primary p-8 rounded-xl shadow-lg">
                 <h2 className="text-2xl font-bold text-text-primary mb-2">Triage & Vitals Assessment</h2>
                 <div className="mb-6 p-4 bg-brand-blue-light rounded-lg">
@@ -86,6 +76,68 @@ const TriagePage: React.FC = () => {
             </div>
         </div>
     );
+};
+
+const TriagePatientList: React.FC = () => {
+    const { patients, setSelectedPatientId } = useContext(AppContext) as AppContextType;
+
+    const waitingPatients = patients.filter(p => p.status === 'Waiting for Triage');
+
+    return (
+        <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold text-text-primary mb-6">Triage Queue</h2>
+            <div className="bg-background-primary rounded-xl shadow-lg overflow-hidden">
+                {waitingPatients.length > 0 ? (
+                    <ul className="divide-y divide-border-color">
+                        {waitingPatients.map(patient => (
+                            <li key={patient.id} onClick={() => setSelectedPatientId(patient.id)} className="p-4 hover:bg-background-secondary cursor-pointer transition-colors" role="button" aria-label={`Triage patient ${patient.name}`}>
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-bold text-text-primary">{patient.name}</p>
+                                        <p className="text-sm text-text-tertiary">{patient.age}, {patient.gender}</p>
+                                    </div>
+                                    {patient.aiTriage && (
+                                        <div className="text-right">
+                                            <p className="text-xs font-semibold text-text-tertiary uppercase">AI Suggestion</p>
+                                            <p className="text-sm font-medium text-brand-blue-dark">{patient.aiTriage.department}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <p className="text-sm text-text-secondary mt-2">{patient.complaint}</p>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="p-8 text-center text-text-tertiary">No patients are waiting for triage.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
+const TriagePage: React.FC = () => {
+    const { patients, selectedPatientId } = useContext(AppContext) as AppContextType;
+    const [patientForForm, setPatientForForm] = useState<Patient | null>(null);
+
+    useEffect(() => {
+        if (selectedPatientId) {
+            const currentPatient = patients.find(p => p.id === selectedPatientId);
+            if (currentPatient && currentPatient.status === 'Waiting for Triage') {
+                setPatientForForm(currentPatient);
+            } else {
+                 setPatientForForm(null);
+            }
+        } else {
+            setPatientForForm(null);
+        }
+    }, [selectedPatientId, patients]);
+    
+    if (patientForForm) {
+        return <TriageForm patient={patientForForm} />;
+    } else {
+        return <TriagePatientList />;
+    }
 };
 
 export default TriagePage;

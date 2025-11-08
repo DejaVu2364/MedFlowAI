@@ -1,9 +1,4 @@
 
-
-
-
-
-
 import React, { useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { AppContext } from '../App';
 import { AppContextType, Patient, User, TriageLevel, Order, Vitals, OrderStatus, OrderCategory, ClinicalFileSections, Allergy, HistorySectionData, GPESectionData, SystemicExamSectionData, SystemicExamSystemData, AISuggestionHistory, OrderPriority, Round, Result, VitalsRecord, VitalsMeasurements } from '../types';
@@ -11,7 +6,7 @@ import { SparklesIcon, CheckBadgeIcon, InformationCircleIcon, DocumentDuplicateI
 import TextareaAutosize from 'react-textarea-autosize';
 import { generateSOAPForRound, summarizeChangesSinceLastRound } from '../services/geminiService';
 
-const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
+const TriageBadge: React.FC<{ level: TriageLevel }> = React.memo(({ level }) => {
     const baseClasses = "px-2.5 py-1 text-xs font-semibold rounded-full inline-block";
     const levelStyles: Record<TriageLevel, string> = {
         Red: 'bg-red-100 text-triage-red',
@@ -20,16 +15,16 @@ const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
         None: 'bg-gray-100 text-triage-none dark:bg-neutral-700 dark:text-neutral-300',
     };
     return <span className={`${baseClasses} ${levelStyles[level]}`}>{level}</span>;
-};
+});
 
 
 // --- REUSABLE & NEW COMPONENTS ---
 
-const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = ({ patient }) => {
+const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const vitals = patient.vitals;
     const prevVitals = patient.vitalsHistory.length > 1 ? patient.vitalsHistory[1]?.measurements : null;
 
-    const VitalsChip: React.FC<{ label: string, value?: number | string, unit: string, prevValue?: number | null }> = ({ label, value, unit, prevValue }) => {
+    const VitalsChip: React.FC<{ label: string, value?: number | string, unit: string, prevValue?: number | null }> = React.memo(({ label, value, unit, prevValue }) => {
         let trend: 'up' | 'down' | 'same' = 'same';
         if (typeof value === 'number' && typeof prevValue === 'number' && prevValue !== null) {
             if (value > prevValue) trend = 'up';
@@ -48,7 +43,7 @@ const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = ({ patient }) => 
                 </div>
             </div>
         )
-    };
+    });
     return (
         <div className="p-4 md:p-6 border-b border-border-color">
             <div className="flex flex-col md:flex-row justify-between md:items-center">
@@ -68,9 +63,9 @@ const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = ({ patient }) => 
             </div>
         </div>
     );
-};
+});
 
-const Accordion: React.FC<{ title: string, children: React.ReactNode, isOpenDefault?: boolean, status?: 'green' | 'yellow' | 'red' }> = ({ title, children, isOpenDefault = false, status }) => {
+const Accordion: React.FC<{ title: string, children: React.ReactNode, isOpenDefault?: boolean, status?: 'green' | 'yellow' | 'red' }> = React.memo(({ title, children, isOpenDefault = false, status }) => {
     const [isOpen, setIsOpen] = useState(isOpenDefault);
     const statusClasses = {
         green: 'bg-green-500',
@@ -94,15 +89,15 @@ const Accordion: React.FC<{ title: string, children: React.ReactNode, isOpenDefa
             {isOpen && <div className="p-4 border-t border-border-color">{children}</div>}
         </div>
     );
-};
+});
 
-const AIActionButton: React.FC<{ onClick: () => void, text: string, isLoading?: boolean }> = ({ onClick, text, isLoading }) => (
+const AIActionButton: React.FC<{ onClick: () => void, text: string, isLoading?: boolean }> = React.memo(({ onClick, text, isLoading }) => (
     <button onClick={onClick} disabled={isLoading} className="flex items-center gap-1.5 text-xs px-2.5 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 disabled:opacity-50 dark:bg-blue-900/50 dark:text-blue-300 dark:hover:bg-blue-900/80">
         <SparklesIcon /> {isLoading ? 'Working...' : text}
     </button>
-);
+));
 
-const TagsInput: React.FC<{ tags: string[]; onTagsChange: (tags: string[]) => void; disabled: boolean }> = ({ tags, onTagsChange, disabled }) => {
+const TagsInput: React.FC<{ tags: string[]; onTagsChange: (tags: string[]) => void; disabled: boolean }> = React.memo(({ tags, onTagsChange, disabled }) => {
     const [inputValue, setInputValue] = useState('');
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -139,11 +134,11 @@ const TagsInput: React.FC<{ tags: string[]; onTagsChange: (tags: string[]) => vo
             />
         </div>
     );
-};
+});
 
 // --- TAB COMPONENTS ---
 
-const OverviewTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+const OverviewTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { generatePatientOverview, isLoading } = useContext(AppContext) as AppContextType;
     
     useEffect(() => {
@@ -187,10 +182,10 @@ const OverviewTab: React.FC<{ patient: Patient }> = ({ patient }) => {
             </div>
         </div>
     );
-};
+});
 
 // --- CLINICAL FILE SUB-SECTIONS ---
-const AIFormatSuggestionChips: React.FC<{ patient: Patient }> = ({ patient }) => {
+const AIFormatSuggestionChips: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { acceptAISuggestion, clearAISuggestions } = useContext(AppContext) as AppContextType;
     const suggestions = patient.clinicalFile.aiSuggestions?.history;
 
@@ -241,14 +236,14 @@ const AIFormatSuggestionChips: React.FC<{ patient: Patient }> = ({ patient }) =>
             {renderSuggestion('family_history', 'Family History', suggestions.family_history)}
         </div>
     );
-};
+});
 
 const AIHistoryHelper: React.FC<{
     patient: Patient;
     sectionKey: 'history';
     fieldKey: keyof HistorySectionData;
     currentValue: string;
-}> = ({ patient, sectionKey, fieldKey, currentValue }) => {
+}> = React.memo(({ patient, sectionKey, fieldKey, currentValue }) => {
     const { getFollowUpQuestions, updateFollowUpAnswer, composeHistoryWithAI } = useContext(AppContext) as AppContextType;
     const [isLoading, setIsLoading] = useState(false);
 
@@ -316,7 +311,7 @@ const AIHistoryHelper: React.FC<{
             )}
         </div>
     );
-};
+});
 
 const AIAssistedTextarea: React.FC<{
     patient: Patient;
@@ -324,7 +319,7 @@ const AIAssistedTextarea: React.FC<{
     label: string;
     isSignedOff: boolean;
     minRows?: number;
-}> = ({ patient, fieldKey, label, isSignedOff, minRows = 2 }) => {
+}> = React.memo(({ patient, fieldKey, label, isSignedOff, minRows = 2 }) => {
     const { updateClinicalFileSection } = useContext(AppContext) as AppContextType;
     const history = patient.clinicalFile.sections.history || {};
     const currentValue = (history[fieldKey] as string) || '';
@@ -355,9 +350,9 @@ const AIAssistedTextarea: React.FC<{
             </div>
         </div>
     );
-};
+});
 
-const HistorySection: React.FC<{ patient: Patient; isSignedOff: boolean }> = ({ patient, isSignedOff }) => {
+const HistorySection: React.FC<{ patient: Patient; isSignedOff: boolean }> = React.memo(({ patient, isSignedOff }) => {
     const { updateClinicalFileSection, formatHpi, checkMissingInfo, summarizeSection } = useContext(AppContext) as AppContextType;
     const history = patient.clinicalFile.sections.history || {};
 
@@ -459,9 +454,9 @@ const HistorySection: React.FC<{ patient: Patient; isSignedOff: boolean }> = ({ 
             </div>
         </div>
     );
-};
+});
 
-const GPESection: React.FC<{ patient: Patient; isSignedOff: boolean }> = ({ patient, isSignedOff }) => {
+const GPESection: React.FC<{ patient: Patient; isSignedOff: boolean }> = React.memo(({ patient, isSignedOff }) => {
     const { updateClinicalFileSection, summarizeSection } = useContext(AppContext) as AppContextType;
     const gpe = patient.clinicalFile.sections.gpe || {};
 
@@ -531,9 +526,9 @@ const GPESection: React.FC<{ patient: Patient; isSignedOff: boolean }> = ({ pati
             </div>
         </div>
     );
-};
+});
 
-const SystemicExamSection: React.FC<{ patient: Patient; isSignedOff: boolean }> = ({ patient, isSignedOff }) => {
+const SystemicExamSection: React.FC<{ patient: Patient; isSignedOff: boolean }> = React.memo(({ patient, isSignedOff }) => {
     const { updateClinicalFileSection, summarizeSection } = useContext(AppContext) as AppContextType;
     
     const systems: { key: keyof SystemicExamSectionData; label: string }[] = [
@@ -542,7 +537,7 @@ const SystemicExamSection: React.FC<{ patient: Patient; isSignedOff: boolean }> 
         { key: 'msk', label: 'Musculoskeletal (MSK)' }, { key: 'skin', label: 'Skin & Integument' },
     ];
     
-    const SystemPanel: React.FC<{ systemKey: keyof SystemicExamSectionData; systemLabel: string; }> = ({ systemKey, systemLabel }) => {
+    const SystemPanel: React.FC<{ systemKey: keyof SystemicExamSectionData; systemLabel: string; }> = React.memo(({ systemKey, systemLabel }) => {
         const systemData = patient.clinicalFile.sections.systemic?.[systemKey] || {};
         
         const handleFieldChange = (field: keyof SystemicExamSystemData, value: string) => {
@@ -580,7 +575,7 @@ const SystemicExamSection: React.FC<{ patient: Patient; isSignedOff: boolean }> 
                 </div>
             </Accordion>
         );
-    };
+    });
 
     return (
         <div className="space-y-4">
@@ -590,9 +585,9 @@ const SystemicExamSection: React.FC<{ patient: Patient; isSignedOff: boolean }> 
             {systems.map(({ key, label }) => <SystemPanel key={key} systemKey={key} systemLabel={label} />)}
         </div>
     );
-};
+});
 
-const SummarySignoffSection: React.FC<{ patient: Patient; user: User }> = ({ patient, user }) => {
+const SummarySignoffSection: React.FC<{ patient: Patient; user: User }> = React.memo(({ patient, user }) => {
     const { signOffClinicalFile, summarizePatientClinicalFile, crossCheckFile, isLoading } = useContext(AppContext) as AppContextType;
 
     useEffect(() => {
@@ -650,9 +645,9 @@ const SummarySignoffSection: React.FC<{ patient: Patient; user: User }> = ({ pat
              {user.role !== 'Doctor' && <p className="text-xs text-right mt-1 text-text-tertiary">Only a Doctor can sign off the clinical file.</p>}
         </div>
     );
-};
+});
 
-const ClinicalFileTab: React.FC<{ patient: Patient; user: User }> = ({ patient, user }) => {
+const ClinicalFileTab: React.FC<{ patient: Patient; user: User }> = React.memo(({ patient, user }) => {
     const isSignedOff = patient.clinicalFile.status === 'signed';
 
     return (
@@ -669,11 +664,11 @@ const ClinicalFileTab: React.FC<{ patient: Patient; user: User }> = ({ patient, 
             <SummarySignoffSection patient={patient} user={user} />
         </div>
     );
-};
+});
 
 // --- NEW ORDERS TAB AND COMPONENTS ---
 
-const OrdersHeader: React.FC<{ onQuickOrder: (label: string) => void; activeCategory: OrderCategory }> = ({ onQuickOrder, activeCategory }) => {
+const OrdersHeader: React.FC<{ onQuickOrder: (label: string) => void; activeCategory: OrderCategory }> = React.memo(({ onQuickOrder, activeCategory }) => {
     const [quickOrderText, setQuickOrderText] = useState('');
     const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -727,9 +722,9 @@ const OrdersHeader: React.FC<{ onQuickOrder: (label: string) => void; activeCate
             </div>
         </div>
     );
-};
+});
 
-const SuggestionPanel: React.FC<{ suggestions: Order[], onAccept: (id: string) => void, onDismiss: (id: string) => void }> = ({ suggestions, onAccept, onDismiss }) => {
+const SuggestionPanel: React.FC<{ suggestions: Order[], onAccept: (id: string) => void, onDismiss: (id: string) => void }> = React.memo(({ suggestions, onAccept, onDismiss }) => {
     const [isOpen, setIsOpen] = useState(true);
 
     const handleKeyDown = (e: React.KeyboardEvent, orderId: string) => {
@@ -780,9 +775,9 @@ const SuggestionPanel: React.FC<{ suggestions: Order[], onAccept: (id: string) =
             )}
         </div>
     );
-};
+});
 
-const CategoryTabs: React.FC<{ orders: Order[], activeCategory: OrderCategory, setActiveCategory: (c: OrderCategory) => void }> = ({ orders, activeCategory, setActiveCategory }) => {
+const CategoryTabs: React.FC<{ orders: Order[], activeCategory: OrderCategory, setActiveCategory: (c: OrderCategory) => void }> = React.memo(({ orders, activeCategory, setActiveCategory }) => {
     const categories: OrderCategory[] = ['investigation', 'radiology', 'medication', 'procedure', 'nursing', 'referral'];
     const orderCounts = useMemo(() => {
         return categories.reduce((acc, cat) => {
@@ -819,9 +814,9 @@ const CategoryTabs: React.FC<{ orders: Order[], activeCategory: OrderCategory, s
             </div>
         </div>
     );
-};
+});
 
-const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
+const OrderCard: React.FC<{ order: Order }> = React.memo(({ order }) => {
     const categoryIcons: Record<OrderCategory, React.ReactNode> = {
         investigation: <BeakerIcon />,
         radiology: <FilmIcon />,
@@ -883,9 +878,9 @@ const OrderCard: React.FC<{ order: Order }> = ({ order }) => {
             </div>
         </div>
     );
-};
+});
 
-const OrdersList: React.FC<{ patient: Patient; orders: Order[], activeCategory: OrderCategory }> = ({ patient, orders, activeCategory }) => {
+const OrdersList: React.FC<{ patient: Patient; orders: Order[], activeCategory: OrderCategory }> = React.memo(({ patient, orders, activeCategory }) => {
     const { sendAllDrafts } = useContext(AppContext) as AppContextType;
     
     const draftOrders = useMemo(() => orders.filter(o => o.status === 'draft'), [orders]);
@@ -932,9 +927,9 @@ const OrdersList: React.FC<{ patient: Patient; orders: Order[], activeCategory: 
             ))}
         </div>
     );
-};
+});
 
-const OrdersTab: React.FC<{ patient: Patient; user: User }> = ({ patient, user }) => {
+const OrdersTab: React.FC<{ patient: Patient; user: User }> = React.memo(({ patient, user }) => {
     const { updateOrder, sendAllDrafts, addOrderToPatient } = useContext(AppContext) as AppContextType;
     const [activeCategory, setActiveCategory] = useState<OrderCategory>('investigation');
 
@@ -963,8 +958,9 @@ const OrdersTab: React.FC<{ patient: Patient; user: User }> = ({ patient, user }
         );
     }
     
-    const aiSuggestions = patient.orders.filter(o => o.status === 'draft' && o.ai_provenance?.rationale);
-    const ordersForCategory = patient.orders.filter(o => o.category === activeCategory);
+    const aiSuggestions = useMemo(() => patient.orders.filter(o => o.status === 'draft' && o.ai_provenance?.rationale), [patient.orders]);
+    const ordersForCategory = useMemo(() => patient.orders.filter(o => o.category === activeCategory), [patient.orders, activeCategory]);
+
 
     const handleAcceptSuggestion = (orderId: string) => {
         updateOrder(patient.id, orderId, { status: 'sent' });
@@ -1001,11 +997,11 @@ const OrdersTab: React.FC<{ patient: Patient; user: User }> = ({ patient, user }
             </div>
         </div>
     );
-};
+});
 
 
 // --- NEW ROUNDS TAB ---
-const SinceLastRoundPanel: React.FC<{ patient: Patient }> = ({ patient }) => {
+const SinceLastRoundPanel: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const [summary, setSummary] = useState<{ summary: string, highlights: string[] } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     
@@ -1049,9 +1045,9 @@ const SinceLastRoundPanel: React.FC<{ patient: Patient }> = ({ patient }) => {
             )}
         </div>
     );
-};
+});
 
-const ProgressNoteEditor: React.FC<{ patient: Patient; draftRound: Round | null; onUpdate: (updates: Partial<Round>) => void; onSignOff: () => void; }> = ({ patient, draftRound, onUpdate, onSignOff }) => {
+const ProgressNoteEditor: React.FC<{ patient: Patient; draftRound: Round | null; onUpdate: (updates: Partial<Round>) => void; onSignOff: () => void; }> = React.memo(({ patient, draftRound, onUpdate, onSignOff }) => {
     const [isLoading, setIsLoading] = useState(false);
     const subjectiveRef = React.useRef<HTMLTextAreaElement>(null);
     
@@ -1121,9 +1117,9 @@ const ProgressNoteEditor: React.FC<{ patient: Patient; draftRound: Round | null;
             </div>
         </div>
     );
-};
+});
 
-const OrdersInlinePanel: React.FC<{ patient: Patient }> = ({ patient }) => {
+const OrdersInlinePanel: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const activeOrders = patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress');
     
     return (
@@ -1145,9 +1141,9 @@ const OrdersInlinePanel: React.FC<{ patient: Patient }> = ({ patient }) => {
              {activeOrders.length === 0 && <p className="text-sm text-text-tertiary text-center py-4">No active orders.</p>}
         </div>
     );
-};
+});
 
-const ResultsInlinePanel: React.FC<{ patient: Patient, lastRoundAt: string | null }> = ({ patient, lastRoundAt }) => {
+const ResultsInlinePanel: React.FC<{ patient: Patient, lastRoundAt: string | null }> = React.memo(({ patient, lastRoundAt }) => {
     const newResults = lastRoundAt ? patient.results.filter(r => new Date(r.timestamp) > new Date(lastRoundAt)) : patient.results;
 
     if (newResults.length === 0) {
@@ -1178,10 +1174,10 @@ const ResultsInlinePanel: React.FC<{ patient: Patient, lastRoundAt: string | nul
             ))}
         </div>
     );
-};
+});
 
 
-const RoundsTimeline: React.FC<{ patient: Patient }> = ({ patient }) => {
+const RoundsTimeline: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const signedRounds = patient.rounds.filter(r => r.status === 'signed');
     
     if (signedRounds.length === 0) return null;
@@ -1202,7 +1198,7 @@ const RoundsTimeline: React.FC<{ patient: Patient }> = ({ patient }) => {
              ))}
          </div>
     );
-};
+});
 
 const SignoffModal: React.FC<{ 
     isOpen: boolean; 
@@ -1210,12 +1206,24 @@ const SignoffModal: React.FC<{
     onConfirm: () => void; 
     contradictions: string[]; 
 }> = ({ isOpen, onClose, onConfirm, contradictions }) => {
+    
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="signoff-modal-title">
             <div className="bg-background-primary rounded-lg shadow-xl p-6 w-full max-w-lg">
-                <h3 className="text-lg font-bold text-text-primary">Confirm Round Sign-off</h3>
+                <h3 id="signoff-modal-title" className="text-lg font-bold text-text-primary">Confirm Round Sign-off</h3>
                 {contradictions.length > 0 ? (
                     <div className="mt-4 space-y-3">
                         <p className="text-sm text-yellow-800 dark:text-yellow-300 p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-md">
@@ -1242,7 +1250,7 @@ const SignoffModal: React.FC<{
     );
 };
 
-const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+const RoundsTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { createDraftRound, updateDraftRound, signOffRound, isLoading } = useContext(AppContext) as AppContextType;
     const [draftRound, setDraftRound] = useState<Round | null>(null);
     const [isSignoffModalOpen, setIsSignoffModalOpen] = useState(false);
@@ -1258,14 +1266,14 @@ const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
         initDraft();
     }, [patient.id, createDraftRound]);
 
-    const handleUpdate = (updates: Partial<Round>) => {
+    const handleUpdate = useCallback((updates: Partial<Round>) => {
         if (!draftRound) return;
         const newDraft = { ...draftRound, ...updates };
         setDraftRound(newDraft);
         updateDraftRound(patient.id, draftRound.roundId, updates);
-    };
+    }, [draftRound, patient.id, updateDraftRound]);
 
-    const handleSignOffClick = async () => {
+    const handleSignOffClick = useCallback(async () => {
         if (!draftRound) return;
         // Mock cross-check result for demonstration
         const { contradictions: issues } = await (async () => {
@@ -1277,9 +1285,9 @@ const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
 
         setContradictions(issues);
         setIsSignoffModalOpen(true);
-    };
+    }, [draftRound, patient.vitals]);
 
-    const confirmSignOff = async () => {
+    const confirmSignOff = useCallback(async () => {
         if (!draftRound) return;
         await signOffRound(patient.id, draftRound.roundId);
         setIsSignoffModalOpen(false);
@@ -1287,7 +1295,7 @@ const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
         // After successful sign-off, create a new draft
         const newDraft = await createDraftRound(patient.id);
         setDraftRound(newDraft);
-    };
+    }, [draftRound, patient.id, signOffRound, createDraftRound]);
 
     if (patient.clinicalFile.status !== 'signed') {
          return (
@@ -1319,12 +1327,12 @@ const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
             </div>
         </>
     );
-};
+});
 
 
 // --- NEW VITALS TAB ---
 
-const VitalsHeader: React.FC<{ patient: Patient, onGenerateSummary: () => void, isLoading: boolean }> = ({ patient, onGenerateSummary, isLoading }) => {
+const VitalsHeader: React.FC<{ patient: Patient, onGenerateSummary: () => void, isLoading: boolean }> = React.memo(({ patient, onGenerateSummary, isLoading }) => {
     const lastRecorded = patient.vitalsHistory[0];
     return (
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
@@ -1340,9 +1348,9 @@ const VitalsHeader: React.FC<{ patient: Patient, onGenerateSummary: () => void, 
             </div>
         </div>
     );
-};
+});
 
-const VitalsEntryCard: React.FC<{ patient: Patient; onSave: (entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => void; }> = ({ patient, onSave }) => {
+const VitalsEntryCard: React.FC<{ patient: Patient; onSave: (entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => void; }> = React.memo(({ patient, onSave }) => {
     const [vitals, setVitals] = useState<VitalsMeasurements>({});
     const [observations, setObservations] = useState('');
     const firstInputRef = React.useRef<HTMLInputElement>(null);
@@ -1409,9 +1417,9 @@ const VitalsEntryCard: React.FC<{ patient: Patient; onSave: (entry: Pick<VitalsR
             </div>
         </form>
     );
-};
+});
 
-const VitalsList: React.FC<{ vitalsHistory: VitalsRecord[] }> = ({ vitalsHistory }) => {
+const VitalsList: React.FC<{ vitalsHistory: VitalsRecord[] }> = React.memo(({ vitalsHistory }) => {
     if (vitalsHistory.length === 0) {
         return <div className="p-8 text-center text-text-tertiary bg-background-primary rounded-lg shadow-sm border border-border-color">No vitals recorded yet.</div>;
     }
@@ -1436,19 +1444,19 @@ const VitalsList: React.FC<{ vitalsHistory: VitalsRecord[] }> = ({ vitalsHistory
             </div>
         </div>
     );
-};
+});
 
-const VitalsChartPanel: React.FC = () => {
+const VitalsChartPanel: React.FC = React.memo(() => {
     return (
         <div className="bg-background-primary p-8 rounded-lg shadow-sm border border-border-color text-center text-text-tertiary">
             <h4 className="font-semibold mb-2 text-text-secondary">Vitals Trend Chart</h4>
             <p>(Interactive time-series charts would be displayed here)</p>
         </div>
     );
-};
+});
 
-const VitalsTrendsCard: React.FC<{ latest?: VitalsRecord, previous?: VitalsRecord }> = ({ latest, previous }) => {
-    const calculateDelta = (key: keyof VitalsMeasurements) => {
+const VitalsTrendsCard: React.FC<{ latest?: VitalsRecord, previous?: VitalsRecord }> = React.memo(({ latest, previous }) => {
+    const calculateDelta = useCallback((key: keyof VitalsMeasurements) => {
         const l = latest?.measurements[key];
         const p = previous?.measurements[key];
         if (typeof l === 'number' && typeof p === 'number') {
@@ -1458,7 +1466,7 @@ const VitalsTrendsCard: React.FC<{ latest?: VitalsRecord, previous?: VitalsRecor
             return <span className={delta > 0 ? 'text-red-500' : 'text-green-500'}>{sign} {Math.abs(delta).toFixed(1)} ({percent.toFixed(0)}%)</span>;
         }
         return <span className="text-text-tertiary">-</span>;
-    };
+    }, [latest, previous]);
     
     return (
         <div className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
@@ -1470,9 +1478,9 @@ const VitalsTrendsCard: React.FC<{ latest?: VitalsRecord, previous?: VitalsRecor
             </div>
         </div>
     );
-};
+});
 
-const VitalsAlertsPanel: React.FC<{ measurements?: VitalsMeasurements | null }> = ({ measurements }) => {
+const VitalsAlertsPanel: React.FC<{ measurements?: VitalsMeasurements | null }> = React.memo(({ measurements }) => {
     const alerts = useMemo(() => {
         if (!measurements) return [];
         const foundAlerts: string[] = [];
@@ -1495,21 +1503,21 @@ const VitalsAlertsPanel: React.FC<{ measurements?: VitalsMeasurements | null }> 
             ) : <p className="text-sm text-text-tertiary">No active alerts.</p>}
          </div>
     );
-};
+});
 
 
-const VitalsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+const VitalsTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { addVitalsRecord, summarizeVitals, isLoading } = useContext(AppContext) as AppContextType;
     const [aiSummary, setAiSummary] = useState<string | null>(null);
 
-    const handleSaveVitals = (entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => {
+    const handleSaveVitals = useCallback((entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => {
         addVitalsRecord(patient.id, entry);
-    };
+    }, [addVitalsRecord, patient.id]);
 
-    const handleGenerateSummary = async () => {
+    const handleGenerateSummary = useCallback(async () => {
         const summary = await summarizeVitals(patient.id);
         setAiSummary(summary);
-    };
+    }, [summarizeVitals, patient.id]);
 
     const latestVitals = patient.vitalsHistory[0];
     const previousVitals = patient.vitalsHistory[1];
@@ -1536,9 +1544,9 @@ const VitalsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
             </div>
         </div>
     );
-};
+});
 
-const DischargeTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+const DischargeTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { generateDischargeSummary, isLoading } = useContext(AppContext) as AppContextType;
     const [summary, setSummary] = useState(patient.dischargeSummary?.draft || '');
 
@@ -1568,11 +1576,11 @@ const DischargeTab: React.FC<{ patient: Patient }> = ({ patient }) => {
             </div>
         </div>
     );
-};
+});
 
 // --- MAIN WORKSPACE COMPONENT ---
 
-const PatientWorkspace: React.FC<{ patient: Patient, user: User }> = ({ patient, user }) => {
+const PatientWorkspace: React.FC<{ patient: Patient, user: User }> = React.memo(({ patient, user }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'clinicalFile' | 'orders' | 'rounds' | 'vitals' | 'discharge'>('clinicalFile');
 
     const tabs = [
@@ -1610,7 +1618,7 @@ const PatientWorkspace: React.FC<{ patient: Patient, user: User }> = ({ patient,
             </div>
         </div>
     );
-};
+});
 
 
 const PatientDetailPage: React.FC = () => {

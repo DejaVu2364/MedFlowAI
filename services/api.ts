@@ -1,12 +1,8 @@
 
-
-
-
-
 import { Patient, Vitals, Triage, TriageLevel, TeamNote, SOAPNote, User, AuditEvent, AITriageSuggestion, Round, Result, VitalsRecord, VitalsMeasurements } from '../types';
 
-export const MOCK_DOCTOR: User = { id: 'user-doc-1', name: 'Dr. Carol', email: 'doctor@medflow.ai', role: 'Doctor' };
-export const MOCK_INTERN: User = { id: 'user-int-1', name: 'Dr. Alice', email: 'intern@medflow.ai', role: 'Intern' };
+export const MOCK_DOCTOR: User = { id: 'user-doc-1', name: 'Dr. Harikrishnan S', email: 'doctor@medflow.ai', role: 'Doctor' };
+export const MOCK_INTERN: User = { id: 'user-int-1', name: 'Dr. Rohan Joshi', email: 'intern@medflow.ai', role: 'Intern' };
 
 // Fix: Add missing user authentication exports for LoginPage.
 const MOCK_USERS: User[] = [MOCK_DOCTOR, MOCK_INTERN];
@@ -21,13 +17,13 @@ export const findUserByEmail = (email: string): User | undefined => {
 };
 
 const INITIAL_PATIENTS: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'aiTriage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'results' | 'vitals'>[] = [
-    { name: 'John Doe', age: 45, gender: 'Male', phone: '555-0101', complaint: 'Severe chest pain and shortness of breath' },
-    { name: 'Jane Smith', age: 32, gender: 'Female', phone: '555-0102', complaint: 'Fever, cough, and body aches for 3 days' },
-    { name: 'Mike Johnson', age: 28, gender: 'Male', phone: '555-0103', complaint: 'Fell off a ladder, arm is deformed and painful' },
-    { name: 'Emily Williams', age: 68, gender: 'Female', phone: '555-0104', complaint: 'Sudden sharp pain in the lower abdomen' },
-    { name: 'Sarah Brown', age: 29, gender: 'Female', phone: '555-0105', complaint: 'Routine pregnancy check-up, feeling well' },
-    { name: 'David Chen', age: 55, gender: 'Male', phone: '555-0106', complaint: 'Headache and dizziness after a fall' },
-    { name: 'Maria Garcia', age: 72, gender: 'Female', phone: '555-0107', complaint: 'Worsening confusion and memory loss noted by family' },
+    { name: 'Aarav Sharma', age: 45, gender: 'Male', phone: '555-0101', complaint: 'Severe chest pain and shortness of breath' },
+    { name: 'Diya Patel', age: 32, gender: 'Female', phone: '555-0102', complaint: 'Fever, cough, and body aches for 3 days' },
+    { name: 'Vihaan Singh', age: 28, gender: 'Male', phone: '555-0103', complaint: 'Fell off a ladder, arm is deformed and painful' },
+    { name: 'Ananya Gupta', age: 68, gender: 'Female', phone: '555-0104', complaint: 'Sudden sharp pain in the lower abdomen' },
+    { name: 'Ishaan Kumar', age: 29, gender: 'Female', phone: '555-0105', complaint: 'Routine pregnancy check-up, feeling well' },
+    { name: 'Saanvi Reddy', age: 55, gender: 'Male', phone: '555-0106', complaint: 'Headache and dizziness after a fall' },
+    { name: 'Advait Joshi', age: 72, gender: 'Female', phone: '555-0107', complaint: 'Worsening confusion and memory loss noted by family' },
 ];
 
 const MOCK_NOTES: { author: User; content: string; isEscalation?: boolean }[] = [

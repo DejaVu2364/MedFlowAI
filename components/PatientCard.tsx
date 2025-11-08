@@ -1,5 +1,4 @@
 
-
 import React, { useContext } from 'react';
 import { Patient, TriageLevel } from '../types';
 import { AppContext } from '../App';
@@ -11,7 +10,7 @@ interface PatientCardProps {
     onClick?: (patientId: string) => void;
 }
 
-const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
+const TriageBadge: React.FC<{ level: TriageLevel }> = React.memo(({ level }) => {
     const baseClasses = "px-2.5 py-1 text-xs font-semibold rounded-full inline-block";
     const levelStyles: Record<TriageLevel, string> = {
         Red: 'bg-red-100 text-triage-red',
@@ -20,7 +19,7 @@ const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
         None: 'bg-gray-100 text-triage-none dark:bg-neutral-700 dark:text-neutral-300',
     };
     return <span className={`${baseClasses} ${levelStyles[level]}`}>{level}</span>;
-};
+});
 
 const CacheIndicator: React.FC = () => (
     <div title="This suggestion was served from a local cache for faster performance." className="inline-block ml-1 text-yellow-500">
@@ -123,4 +122,4 @@ const PatientCard: React.FC<PatientCardProps> = ({ patient, onTriageClick, onCli
     );
 };
 
-export default PatientCard;
+export default React.memo(PatientCard);
