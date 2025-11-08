@@ -1,12 +1,14 @@
 
 
+
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../App';
 import { AppContextType, Patient } from '../types';
 
 const ReceptionPage: React.FC = () => {
     const { addPatient, isLoading, setPage, error } = useContext(AppContext) as AppContextType;
-    const [formData, setFormData] = useState<Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'history' | 'orders' | 'vitalsHistory' | 'personalHistory'| 'gpe' | 'systemicExams' | 'clinicalFile' | 'rounds' | 'dischargeSummary'>>({
+    // Fix: Corrected the Omit type to match the expected patientData for addPatient.
+    const [formData, setFormData] = useState<Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview' | 'results' | 'vitals'>>({
         name: '',
         age: 0,
         gender: 'Other',

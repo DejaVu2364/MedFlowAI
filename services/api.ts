@@ -1,5 +1,9 @@
 
-import { Patient, Vitals, Triage, TriageLevel, TeamNote, SOAPNote, User, AuditEvent, AITriageSuggestion } from '../types';
+
+
+
+
+import { Patient, Vitals, Triage, TriageLevel, TeamNote, SOAPNote, User, AuditEvent, AITriageSuggestion, Round, Result, VitalsRecord, VitalsMeasurements } from '../types';
 
 export const MOCK_DOCTOR: User = { id: 'user-doc-1', name: 'Dr. Carol', email: 'doctor@medflow.ai', role: 'Doctor' };
 export const MOCK_INTERN: User = { id: 'user-int-1', name: 'Dr. Alice', email: 'intern@medflow.ai', role: 'Intern' };
@@ -16,7 +20,7 @@ export const findUserByEmail = (email: string): User | undefined => {
     return MOCK_USERS.find(user => user.email.toLowerCase() === email.toLowerCase());
 };
 
-const INITIAL_PATIENTS: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'aiTriage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary'>[] = [
+const INITIAL_PATIENTS: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'aiTriage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'results' | 'vitals'>[] = [
     { name: 'John Doe', age: 45, gender: 'Male', phone: '555-0101', complaint: 'Severe chest pain and shortness of breath' },
     { name: 'Jane Smith', age: 32, gender: 'Female', phone: '555-0102', complaint: 'Fever, cough, and body aches for 3 days' },
     { name: 'Mike Johnson', age: 28, gender: 'Male', phone: '555-0103', complaint: 'Fell off a ladder, arm is deformed and painful' },
@@ -133,6 +137,7 @@ export const seedPatients = async (): Promise<Patient[]> => {
                 }
             },
             orders: [],
+            results: [],
             rounds: [],
             vitalsHistory: [],
         });
@@ -140,44 +145,87 @@ export const seedPatients = async (): Promise<Patient[]> => {
     patients = seededPatients;
     // Set some patients to a later stage for a more realistic dashboard
     if (patients.length > 2) {
-        const vitals = { hr: 110, bpSys: 130, bpDia: 85, rr: 20, spo2: 97, temp: 38.5};
+        const vitals: VitalsMeasurements = { pulse: 110, bp_sys: 130, bp_dia: 85, rr: 20, spo2: 97, temp_c: 38.5};
         patients[1].status = 'Waiting for Doctor';
         patients[1].triage = { level: 'Yellow', reasons: ['High Heart Rate (110 bpm)']};
         patients[1].vitals = vitals;
-        patients[1].vitalsHistory = [{...vitals, timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), enteredBy: MOCK_INTERN.id }];
+        patients[1].vitalsHistory = [{
+            vitalId: `VIT-${patients[1].id}-1`,
+            patientId: patients[1].id,
+            recordedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+            recordedBy: MOCK_INTERN.id,
+            source: 'manual',
+            measurements: vitals,
+        }];
     }
      if (patients.length > 4) {
-        const vitals = { hr: 120, bpSys: 100, bpDia: 60, rr: 26, spo2: 88, temp: 37.0};
+        const vitals: VitalsMeasurements = { pulse: 120, bp_sys: 100, bp_dia: 60, rr: 26, spo2: 88, temp_c: 37.0};
+        const patientId = patients[3].id;
+        
+        const sampleSignedRound: Round = {
+            roundId: `RND-${patientId}-1`,
+            patientId: patientId,
+            doctorId: MOCK_DOCTOR.id,
+            createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+            status: 'signed',
+            subjective: "Patient reports worsening abdominal pain, now localized to the right lower quadrant. Describes it as sharp and constant.",
+            objective: "Vitals: See chart. Abdominal exam reveals marked tenderness and guarding in RLQ. Rebound tenderness present. Bowel sounds hypoactive.",
+            assessment: "Acute appendicitis highly likely.",
+            plan: {
+                text: "1. NPO. 2. IV fluids. 3. STAT surgical consult. 4. Pre-op labs (CBC, BMP, Coags). 5. Pain control with IV morphine.",
+                linkedOrders: [],
+            },
+            linkedResults: [],
+            signedBy: MOCK_DOCTOR.id,
+            signedAt: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(),
+        };
+        
+        const mockResults: Result[] = [
+            { resultId: 'RES-1', patientId, orderId: 'ORD-1', type: 'lab', name: 'Hemoglobin', timestamp: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(), status: 'final', isAbnormal: false, value: '14.1', unit: 'g/dL', referenceRange: '13.5-17.5' },
+            { resultId: 'RES-2', patientId, orderId: 'ORD-1', type: 'lab', name: 'WBC Count', timestamp: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(), status: 'final', isAbnormal: true, value: '18.5', unit: 'x10^9/L', referenceRange: '4.5-11.0' },
+            { resultId: 'RES-3', patientId, orderId: 'ORD-2', type: 'imaging', name: 'CT Abdomen', timestamp: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(), status: 'final', isAbnormal: true, value: 'Findings consistent with acute appendicitis.', reportUrl: '#' },
+            { resultId: 'RES-4', patientId, orderId: 'ORD-1', type: 'lab', name: 'WBC Count', timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), status: 'final', isAbnormal: true, value: '16.2', unit: 'x10^9/L', referenceRange: '4.5-11.0', delta: { previousValue: '18.5', change: 'decrease' } },
+        ];
+
         patients[3].status = 'In Treatment';
         patients[3].triage = { level: 'Red', reasons: ['Low SpO2 (88%)']};
         patients[3].vitals = vitals;
-        patients[3].vitalsHistory = [{...vitals, timestamp: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), enteredBy: MOCK_DOCTOR.id }];
+        patients[3].vitalsHistory = [{
+            vitalId: `VIT-${patients[3].id}-1`,
+            patientId: patients[3].id,
+            recordedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+            recordedBy: MOCK_DOCTOR.id,
+            source: 'manual',
+            measurements: vitals
+        }];
         patients[3].clinicalFile.sections.gpe = { ...patients[3].clinicalFile.sections.gpe, vitals, flags: { pallor: true, icterus: false, cyanosis: true, clubbing: false, lymphadenopathy: false, edema: false }};
+        patients[3].rounds = [sampleSignedRound];
+        patients[3].results = mockResults;
     }
     return patients;
 };
 
 // Rule-based triage scorer (MEWS-style)
-export const calculateTriageFromVitals = (vitals: Vitals): Triage => {
+export const calculateTriageFromVitals = (vitals: VitalsMeasurements): Triage => {
     const reasons: string[] = [];
     let level: TriageLevel = 'Green';
 
-    if (vitals.spo2 < 90) {
+    if (vitals.spo2 != null && vitals.spo2 < 90) {
         reasons.push(`Low SpO2 (${vitals.spo2}%)`);
         level = 'Red';
     }
-    if (vitals.bpSys < 90) {
-        reasons.push(`Low Systolic BP (${vitals.bpSys} mmHg)`);
+    if (vitals.bp_sys != null && vitals.bp_sys < 90) {
+        reasons.push(`Low Systolic BP (${vitals.bp_sys} mmHg)`);
         level = 'Red';
     }
     
     if (level !== 'Red') {
-        if (vitals.rr > 24) {
+        if (vitals.rr != null && vitals.rr > 24) {
             reasons.push(`High Respiratory Rate (${vitals.rr}/min)`);
             level = 'Yellow';
         }
-        if (vitals.hr > 120) {
-            reasons.push(`High Heart Rate (${vitals.hr} bpm)`);
+        if (vitals.pulse != null && vitals.pulse > 120) {
+            reasons.push(`High Heart Rate (${vitals.pulse} bpm)`);
             level = 'Yellow';
         }
     }

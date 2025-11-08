@@ -1,10 +1,15 @@
 
 
+
+
+
+
 import React, { useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { AppContext } from '../App';
-import { AppContextType, Patient, User, TriageLevel, Order, Vitals, OrderStatus, OrderCategory, ClinicalFileSections, Allergy, HistorySectionData, GPESectionData, SystemicExamSectionData, SystemicExamSystemData, AISuggestionHistory, OrderPriority } from '../types';
-import { SparklesIcon, CheckBadgeIcon, InformationCircleIcon, DocumentDuplicateIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, PaperAirplaneIcon, PencilIcon, BeakerIcon, FilmIcon, PillIcon, ClipboardDocumentListIcon, UserCircleIcon, SearchIcon } from '../components/icons';
+import { AppContextType, Patient, User, TriageLevel, Order, Vitals, OrderStatus, OrderCategory, ClinicalFileSections, Allergy, HistorySectionData, GPESectionData, SystemicExamSectionData, SystemicExamSystemData, AISuggestionHistory, OrderPriority, Round, Result, VitalsRecord, VitalsMeasurements } from '../types';
+import { SparklesIcon, CheckBadgeIcon, InformationCircleIcon, DocumentDuplicateIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon, EllipsisVerticalIcon, PaperAirplaneIcon, PencilIcon, BeakerIcon, FilmIcon, PillIcon, ClipboardDocumentListIcon, UserCircleIcon, SearchIcon, PlusIcon } from '../components/icons';
 import TextareaAutosize from 'react-textarea-autosize';
+import { generateSOAPForRound, summarizeChangesSinceLastRound } from '../services/geminiService';
 
 const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
     const baseClasses = "px-2.5 py-1 text-xs font-semibold rounded-full inline-block";
@@ -22,11 +27,11 @@ const TriageBadge: React.FC<{ level: TriageLevel }> = ({ level }) => {
 
 const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = ({ patient }) => {
     const vitals = patient.vitals;
-    const prevVitals = patient.vitalsHistory.length > 1 ? patient.vitalsHistory[1] : null;
+    const prevVitals = patient.vitalsHistory.length > 1 ? patient.vitalsHistory[1]?.measurements : null;
 
-    const VitalsChip: React.FC<{ label: string, value?: number | string, unit: string, prevValue?: number }> = ({ label, value, unit, prevValue }) => {
+    const VitalsChip: React.FC<{ label: string, value?: number | string, unit: string, prevValue?: number | null }> = ({ label, value, unit, prevValue }) => {
         let trend: 'up' | 'down' | 'same' = 'same';
-        if (typeof value === 'number' && prevValue) {
+        if (typeof value === 'number' && typeof prevValue === 'number' && prevValue !== null) {
             if (value > prevValue) trend = 'up';
             if (value < prevValue) trend = 'down';
         }
@@ -54,11 +59,11 @@ const PatientWorkspaceHeader: React.FC<{ patient: Patient }> = ({ patient }) => 
                     </p>
                 </div>
                  <div className="grid grid-cols-3 md:grid-cols-5 gap-4 mt-4 md:mt-0 p-2 bg-background-secondary rounded-lg">
-                    <VitalsChip label="Pulse" value={vitals?.hr} unit=" bpm" prevValue={prevVitals?.hr}/>
-                    <VitalsChip label="BP" value={`${vitals?.bpSys || 'N/A'}/${vitals?.bpDia || ''}`} unit=" mmHg" prevValue={prevVitals?.bpSys}/>
+                    <VitalsChip label="Pulse" value={vitals?.pulse} unit=" bpm" prevValue={prevVitals?.pulse}/>
+                    <VitalsChip label="BP" value={`${vitals?.bp_sys || 'N/A'}/${vitals?.bp_dia || ''}`} unit=" mmHg" prevValue={prevVitals?.bp_sys}/>
                     <VitalsChip label="RR" value={vitals?.rr} unit="/min" prevValue={prevVitals?.rr}/>
                     <VitalsChip label="SpO₂" value={vitals?.spo2} unit="%" prevValue={prevVitals?.spo2}/>
-                    <VitalsChip label="Temp" value={vitals?.temp} unit="°C" prevValue={prevVitals?.temp}/>
+                    <VitalsChip label="Temp" value={vitals?.temp_c} unit="°C" prevValue={prevVitals?.temp_c}/>
                 </div>
             </div>
         </div>
@@ -999,102 +1004,534 @@ const OrdersTab: React.FC<{ patient: Patient; user: User }> = ({ patient, user }
 };
 
 
-const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
-    const { addRoundToPatient, isLoading } = useContext(AppContext) as AppContextType;
-    const [note, setNote] = useState('');
+// --- NEW ROUNDS TAB ---
+const SinceLastRoundPanel: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const [summary, setSummary] = useState<{ summary: string, highlights: string[] } | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     
-    const handleAddRound = async () => {
-        if (note.trim()) {
-            await addRoundToPatient(patient.id, note);
-            setNote('');
-        }
+    const lastSignedRound = patient.rounds.find(r => r.status === 'signed');
+
+    const handleGenerateSummary = async () => {
+        if (!lastSignedRound) return;
+        setIsLoading(true);
+        const result = await summarizeChangesSinceLastRound(lastSignedRound.createdAt, patient);
+        setSummary(result);
+        setIsLoading(false);
     };
-     return (
-        <div className="p-4 md:p-6 space-y-4">
-            <h3 className="text-2xl font-bold text-text-primary">Rounds</h3>
-             <div className="bg-background-primary p-4 rounded-lg border border-border-color space-y-2">
-                <label className="font-semibold text-text-secondary">New Round Progress Note</label>
-                <TextareaAutosize minRows={3} value={note} onChange={e => setNote(e.target.value)} className="w-full p-2 border border-border-color rounded-md bg-background-primary text-input-text" placeholder="Enter today's notes..."/>
-                <div className="text-right">
-                    <button onClick={handleAddRound} disabled={isLoading} className="px-4 py-2 text-sm font-semibold text-white bg-brand-blue rounded-md hover:bg-brand-blue-dark disabled:bg-gray-400">
-                        {isLoading ? 'Saving...' : 'Sign Off Round'}
+
+    if (!lastSignedRound) {
+        return (
+             <div className="p-4 bg-background-primary rounded-lg border border-border-color text-center">
+                <p className="text-text-secondary">This is the first round for this patient since the clinical file was signed.</p>
+            </div>
+        )
+    }
+    
+    const newResultsCount = patient.results.filter(r => new Date(r.timestamp) > new Date(lastSignedRound.createdAt)).length;
+
+    return (
+        <div className="p-4 bg-background-primary rounded-lg border border-border-color space-y-3">
+            <div className="flex justify-between items-center">
+                 <p className="text-sm text-text-secondary">
+                    Since last round (signed at {new Date(lastSignedRound.createdAt).toLocaleTimeString()}):
+                    <span className="font-semibold text-text-primary ml-2">{newResultsCount} new results</span> • 
+                    <span className="font-semibold text-text-primary ml-2">1 med changed</span>
+                </p>
+                <AIActionButton onClick={handleGenerateSummary} text="Generate AI Summary" isLoading={isLoading} />
+            </div>
+            {summary && (
+                 <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-md">
+                    <p className="font-semibold text-blue-800 dark:text-blue-300 text-sm">{summary.summary}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {summary.highlights.map((h, i) => <span key={i} className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">{h}</span>)}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const ProgressNoteEditor: React.FC<{ patient: Patient; draftRound: Round | null; onUpdate: (updates: Partial<Round>) => void; onSignOff: () => void; }> = ({ patient, draftRound, onUpdate, onSignOff }) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const subjectiveRef = React.useRef<HTMLTextAreaElement>(null);
+    
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === '/') {
+                if(document.activeElement?.tagName.toLowerCase() !== 'input' && document.activeElement?.tagName.toLowerCase() !== 'textarea') {
+                    e.preventDefault();
+                    subjectiveRef.current?.focus();
+                }
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                e.preventDefault();
+                // Saving happens onBlur/onChange, so this is for explicit user feedback
+                console.log("Draft Saved!");
+            }
+             if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                onSignOff();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onSignOff]);
+
+    const handleGenerateAI = async () => {
+        setIsLoading(true);
+        try {
+            const soap = await generateSOAPForRound(patient);
+            onUpdate(soap);
+        } catch (e) {
+            console.error(e);
+            alert("Failed to generate SOAP note.");
+        }
+        setIsLoading(false);
+    };
+    
+    if (!draftRound) return null;
+
+    return (
+        <div className="bg-background-primary rounded-lg border border-border-color">
+            <div className="p-3 border-b border-border-color flex justify-between items-center bg-background-secondary">
+                 <h4 className="font-semibold text-text-secondary">Progress Note (SOAP)</h4>
+                 <div className="flex gap-2">
+                    <AIActionButton onClick={handleGenerateAI} text="Generate with AI" isLoading={isLoading} />
+                    <button className="text-xs px-2.5 py-1 bg-background-tertiary rounded-md hover:bg-border-color">Summarize</button>
+                    <button onClick={onSignOff} className="text-xs px-3 py-1 bg-brand-green text-white rounded-md hover:bg-green-700">Sign Off (Ctrl+Enter)</button>
+                 </div>
+            </div>
+            <div className="p-4 space-y-4">
+                 <div>
+                    <label className="font-semibold text-text-secondary">S: Subjective</label>
+                    <TextareaAutosize ref={subjectiveRef} minRows={2} value={draftRound.subjective} onChange={e => onUpdate({ subjective: e.target.value })} className="w-full mt-1 p-2 border border-border-color rounded-md bg-background-primary text-input-text" />
+                 </div>
+                  <div>
+                    <label className="font-semibold text-text-secondary">O: Objective</label>
+                    <TextareaAutosize minRows={2} value={draftRound.objective} onChange={e => onUpdate({ objective: e.target.value })} className="w-full mt-1 p-2 border border-border-color rounded-md bg-background-primary text-input-text" />
+                 </div>
+                  <div>
+                    <label className="font-semibold text-text-secondary">A: Assessment</label>
+                    <TextareaAutosize minRows={2} value={draftRound.assessment} onChange={e => onUpdate({ assessment: e.target.value })} className="w-full mt-1 p-2 border border-border-color rounded-md bg-background-primary text-input-text" />
+                 </div>
+                 <div>
+                    <label className="font-semibold text-text-secondary">P: Plan</label>
+                    <TextareaAutosize minRows={2} value={draftRound.plan.text} onChange={e => onUpdate({ plan: { ...draftRound.plan, text: e.target.value } })} className="w-full mt-1 p-2 border border-border-color rounded-md bg-background-primary text-input-text" />
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+const OrdersInlinePanel: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const activeOrders = patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress');
+    
+    return (
+        <div className="bg-background-primary rounded-lg border border-border-color p-4 space-y-2">
+            <h4 className="font-semibold text-text-secondary">Orders Review ({activeOrders.length} active)</h4>
+            {activeOrders.map(order => (
+                <div key={order.orderId} className="flex justify-between items-center text-sm p-2 bg-background-secondary rounded-md">
+                    <div>
+                        <p className="font-semibold text-text-primary">{order.label}</p>
+                        <p className="text-xs text-text-tertiary capitalize">{order.category}</p>
+                    </div>
+                    <div className="flex gap-2">
+                         <button className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-md">Continue</button>
+                         <button className="text-xs px-2 py-1 bg-yellow-100 text-yellow-700 rounded-md">Modify</button>
+                         <button className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-md">Stop</button>
+                    </div>
+                </div>
+            ))}
+             {activeOrders.length === 0 && <p className="text-sm text-text-tertiary text-center py-4">No active orders.</p>}
+        </div>
+    );
+};
+
+const ResultsInlinePanel: React.FC<{ patient: Patient, lastRoundAt: string | null }> = ({ patient, lastRoundAt }) => {
+    const newResults = lastRoundAt ? patient.results.filter(r => new Date(r.timestamp) > new Date(lastRoundAt)) : patient.results;
+
+    if (newResults.length === 0) {
+        return <div className="p-4 bg-background-primary rounded-lg border border-border-color text-center text-sm text-text-tertiary">No new results.</div>;
+    }
+
+    return (
+        <div className="bg-background-primary rounded-lg border border-border-color p-4 space-y-2">
+            <h4 className="font-semibold text-text-secondary">New Results ({newResults.length})</h4>
+            {newResults.map(result => (
+                <div key={result.resultId} className={`flex justify-between items-center text-sm p-2 rounded-md ${result.isAbnormal ? 'bg-red-50 dark:bg-red-900/20' : 'bg-background-secondary'}`}>
+                    <div>
+                        <p className="font-semibold text-text-primary">{result.name}</p>
+                        <p className="text-xs text-text-tertiary">{new Date(result.timestamp).toLocaleTimeString()}</p>
+                    </div>
+                    <div className="text-right">
+                        <div className="flex items-center gap-2">
+                            {result.delta && (
+                                <span className={`text-xs ${result.delta.change === 'increase' ? 'text-red-600' : 'text-green-600'}`}>
+                                    ({result.delta.change === 'increase' ? '↑' : '↓'} from {result.delta.previousValue})
+                                </span>
+                            )}
+                            <p className={`font-bold ${result.isAbnormal ? 'text-red-600' : 'text-text-primary'}`}>{result.value} <span className="text-xs font-normal text-text-tertiary">{result.unit}</span></p>
+                        </div>
+                         <p className="text-xs text-text-tertiary">{result.referenceRange}</p>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+
+const RoundsTimeline: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const signedRounds = patient.rounds.filter(r => r.status === 'signed');
+    
+    if (signedRounds.length === 0) return null;
+
+    return (
+         <div className="space-y-4">
+             <h3 className="text-xl font-bold text-text-primary">Rounds History</h3>
+             {signedRounds.map(round => (
+                <Accordion key={round.roundId} title={`Round signed on ${new Date(round.signedAt!).toLocaleDateString()}`}>
+                    <div className="text-sm space-y-2">
+                        <p><strong>Subjective:</strong> {round.subjective}</p>
+                        <p><strong>Objective:</strong> {round.objective}</p>
+                        <p><strong>Assessment:</strong> {round.assessment}</p>
+                        <p><strong>Plan:</strong> {round.plan.text}</p>
+                        <p className="text-xs text-text-tertiary pt-2 border-t border-border-color">Signed by Dr. Placeholder at {new Date(round.signedAt!).toLocaleTimeString()}</p>
+                    </div>
+                </Accordion>
+             ))}
+         </div>
+    );
+};
+
+const SignoffModal: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    onConfirm: () => void; 
+    contradictions: string[]; 
+}> = ({ isOpen, onClose, onConfirm, contradictions }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+            <div className="bg-background-primary rounded-lg shadow-xl p-6 w-full max-w-lg">
+                <h3 className="text-lg font-bold text-text-primary">Confirm Round Sign-off</h3>
+                {contradictions.length > 0 ? (
+                    <div className="mt-4 space-y-3">
+                        <p className="text-sm text-yellow-800 dark:text-yellow-300 p-3 bg-yellow-100 dark:bg-yellow-900/30 rounded-md">
+                            <strong>AI Cross-Check Found Potential Issues:</strong>
+                        </p>
+                        <ul className="list-disc list-inside text-sm text-text-secondary space-y-1">
+                            {contradictions.map((c, i) => <li key={i}>{c}</li>)}
+                        </ul>
+                        <p className="text-sm font-semibold text-text-primary pt-2">Do you want to proceed with sign-off anyway?</p>
+                    </div>
+                ) : (
+                    <p className="mt-4 text-text-secondary">Please review the progress note one last time. Once signed, it cannot be edited.</p>
+                )}
+                <div className="mt-6 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-text-secondary bg-background-tertiary rounded-md hover:bg-border-color">
+                        Cancel
+                    </button>
+                    <button onClick={onConfirm} className="px-4 py-2 text-sm font-medium text-white bg-brand-green hover:bg-green-700 rounded-md">
+                        {contradictions.length > 0 ? 'Acknowledge & Sign Off' : 'Sign Off'}
                     </button>
                 </div>
             </div>
-            
-            <div className="space-y-3">
-                {patient.rounds.map(round => (
-                    <div key={round.id} className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
-                        <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-bold text-lg">Round #{round.roundNumber}</h4>
-                            <p className="text-xs text-text-tertiary">{new Date(round.timestamp).toLocaleString()}</p>
-                        </div>
-                        <div className="text-sm space-y-2">
-                            <p><strong className="font-semibold text-text-secondary">Vitals:</strong> HR {round.vitalsSnapshot.hr}, BP {round.vitalsSnapshot.bpSys}/{round.vitalsSnapshot.bpDia}, SpO₂ {round.vitalsSnapshot.spo2}%</p>
-                            <p><strong className="font-semibold text-text-secondary">AI Summary:</strong> <span className="italic">{round.summaryText}</span></p>
-                            <p><strong className="font-semibold text-text-secondary">Notes:</strong> {round.doctorNotes}</p>
-                        </div>
+        </div>
+    );
+};
+
+const RoundsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const { createDraftRound, updateDraftRound, signOffRound, isLoading } = useContext(AppContext) as AppContextType;
+    const [draftRound, setDraftRound] = useState<Round | null>(null);
+    const [isSignoffModalOpen, setIsSignoffModalOpen] = useState(false);
+    const [contradictions, setContradictions] = useState<string[]>([]);
+    
+    const lastSignedRound = patient.rounds.find(r => r.status === 'signed');
+
+    useEffect(() => {
+        const initDraft = async () => {
+            const draft = await createDraftRound(patient.id);
+            setDraftRound(draft);
+        };
+        initDraft();
+    }, [patient.id, createDraftRound]);
+
+    const handleUpdate = (updates: Partial<Round>) => {
+        if (!draftRound) return;
+        const newDraft = { ...draftRound, ...updates };
+        setDraftRound(newDraft);
+        updateDraftRound(patient.id, draftRound.roundId, updates);
+    };
+
+    const handleSignOffClick = async () => {
+        if (!draftRound) return;
+        // Mock cross-check result for demonstration
+        const { contradictions: issues } = await (async () => {
+            if (draftRound.assessment.toLowerCase().includes("normal") && patient.vitals && patient.vitals?.pulse != null && patient.vitals.pulse > 100) {
+                return { contradictions: ["Assessment is 'normal' but patient is tachycardic."] };
+            }
+            return { contradictions: [] };
+        })();
+
+        setContradictions(issues);
+        setIsSignoffModalOpen(true);
+    };
+
+    const confirmSignOff = async () => {
+        if (!draftRound) return;
+        await signOffRound(patient.id, draftRound.roundId);
+        setIsSignoffModalOpen(false);
+        setContradictions([]);
+        // After successful sign-off, create a new draft
+        const newDraft = await createDraftRound(patient.id);
+        setDraftRound(newDraft);
+    };
+
+    if (patient.clinicalFile.status !== 'signed') {
+         return (
+            <div className="p-8 text-center text-text-tertiary">
+                <p className="font-semibold">Rounds are locked.</p>
+                <p>Please complete and sign off the Clinical File to start rounds.</p>
+            </div>
+        );
+    }
+    
+    return (
+        <>
+            <SignoffModal 
+                isOpen={isSignoffModalOpen}
+                onClose={() => setIsSignoffModalOpen(false)}
+                onConfirm={confirmSignOff}
+                contradictions={contradictions}
+            />
+            <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                    <SinceLastRoundPanel patient={patient} />
+                    <ProgressNoteEditor patient={patient} draftRound={draftRound} onUpdate={handleUpdate} onSignOff={handleSignOffClick} />
+                </div>
+                <div className="space-y-4">
+                    <OrdersInlinePanel patient={patient} />
+                    <ResultsInlinePanel patient={patient} lastRoundAt={lastSignedRound?.createdAt || null} />
+                    <RoundsTimeline patient={patient} />
+                </div>
+            </div>
+        </>
+    );
+};
+
+
+// --- NEW VITALS TAB ---
+
+const VitalsHeader: React.FC<{ patient: Patient, onGenerateSummary: () => void, isLoading: boolean }> = ({ patient, onGenerateSummary, isLoading }) => {
+    const lastRecorded = patient.vitalsHistory[0];
+    return (
+        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+            <div>
+                <h3 className="text-2xl font-bold text-text-primary">Vitals</h3>
+                <p className="text-sm text-text-tertiary">
+                    Last measured at: {lastRecorded ? new Date(lastRecorded.recordedAt).toLocaleString() : 'N/A'}
+                </p>
+            </div>
+            <div className="flex gap-2">
+                <AIActionButton onClick={onGenerateSummary} text="Generate Vitals Summary (AI)" isLoading={isLoading} />
+                <button className="px-3 py-1.5 text-sm font-semibold text-text-secondary bg-background-tertiary rounded-md hover:bg-border-color">Print Vitals</button>
+            </div>
+        </div>
+    );
+};
+
+const VitalsEntryCard: React.FC<{ patient: Patient; onSave: (entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => void; }> = ({ patient, onSave }) => {
+    const [vitals, setVitals] = useState<VitalsMeasurements>({});
+    const [observations, setObservations] = useState('');
+    const firstInputRef = React.useRef<HTMLInputElement>(null);
+
+    const vitalsFields: { key: keyof VitalsMeasurements, label: string, unit: string }[] = [
+        { key: 'temp_c', label: 'Temp', unit: '°C' },
+        { key: 'pulse', label: 'Pulse', unit: 'bpm' },
+        { key: 'rr', label: 'RR', unit: '/min' },
+        { key: 'bp_sys', label: 'BP Sys', unit: 'mmHg' },
+        { key: 'bp_dia', label: 'BP Dia', unit: 'mmHg' },
+        { key: 'spo2', label: 'SpO₂', unit: '%' },
+        { key: 'glucose_mg_dl', label: 'Glucose', unit: 'mg/dL' },
+        { key: 'pain_score', label: 'Pain', unit: '/10' },
+    ];
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setVitals(prev => ({ ...prev, [name]: value === '' ? null : parseFloat(value) }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (Object.values(vitals).every(v => v === null || v === 0 || v === undefined)) {
+            alert("Please enter at least one vital sign.");
+            return;
+        }
+        onSave({ measurements: vitals, observations, source: 'manual' });
+        setVitals({});
+        setObservations('');
+    };
+    
+    const handleCopyLast = () => {
+        if (patient.vitals) {
+            setVitals(patient.vitals);
+        }
+    };
+    
+    return (
+        <form onSubmit={handleSubmit} className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color space-y-4">
+            <h4 className="font-semibold text-text-secondary">Add New Vitals Entry</h4>
+            <div className="grid grid-cols-2 gap-4">
+                {vitalsFields.map(({ key, label, unit }) => (
+                     <div key={key}>
+                        <label className="block text-sm font-medium text-text-secondary">{label} <span className="text-text-tertiary">{unit}</span></label>
+                        <input
+                            ref={key === 'temp_c' ? firstInputRef : null}
+                            type="number"
+                            name={key}
+                            step="any"
+                            value={vitals[key] ?? ''}
+                            onChange={handleChange}
+                            className="mt-1 block w-full p-2 text-sm border border-border-color rounded-md bg-background-primary text-input-text"
+                        />
                     </div>
+                ))}
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-text-secondary">Observations</label>
+                <TextareaAutosize minRows={2} value={observations} onChange={e => setObservations(e.target.value)} className="w-full mt-1 p-2 border border-border-color rounded-md bg-background-primary text-input-text"/>
+            </div>
+            <div className="flex justify-between items-center">
+                <button type="button" onClick={handleCopyLast} className="text-xs text-brand-blue hover:underline">Copy Last</button>
+                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-brand-blue rounded-md">Save Entry</button>
+            </div>
+        </form>
+    );
+};
+
+const VitalsList: React.FC<{ vitalsHistory: VitalsRecord[] }> = ({ vitalsHistory }) => {
+    if (vitalsHistory.length === 0) {
+        return <div className="p-8 text-center text-text-tertiary bg-background-primary rounded-lg shadow-sm border border-border-color">No vitals recorded yet.</div>;
+    }
+    return (
+        <div className="bg-background-primary rounded-lg shadow-sm border border-border-color overflow-hidden">
+            <h4 className="font-semibold text-text-secondary p-4 border-b border-border-color">History</h4>
+            <div className="divide-y divide-border-color">
+                {vitalsHistory.map(record => (
+                     <div key={record.vitalId} className="p-4">
+                        <div className="flex justify-between items-center text-sm mb-2">
+                             <p className="font-semibold text-text-primary">{new Date(record.recordedAt).toLocaleString()}</p>
+                             <p className="text-xs text-text-tertiary capitalize">Source: {record.source}</p>
+                        </div>
+                        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 text-center">
+                            {Object.entries(record.measurements).map(([key, value]) => value != null && (
+                                <div key={key}><span className="font-semibold">{String(value)}</span><span className="text-xs text-text-tertiary ml-1">{key.split('_')[0]}</span></div>
+                            ))}
+                        </div>
+                        {record.observations && <p className="text-sm mt-2 pt-2 border-t border-dashed border-border-color italic">"{record.observations}"</p>}
+                     </div>
                 ))}
             </div>
         </div>
     );
 };
 
-const VitalsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
-    const { addVitalsRecord } = useContext(AppContext) as AppContextType;
-    const [vitals, setVitals] = useState<Vitals>({ hr: 0, bpSys: 0, bpDia: 0, rr: 0, spo2: 0, temp: 0 });
+const VitalsChartPanel: React.FC = () => {
+    return (
+        <div className="bg-background-primary p-8 rounded-lg shadow-sm border border-border-color text-center text-text-tertiary">
+            <h4 className="font-semibold mb-2 text-text-secondary">Vitals Trend Chart</h4>
+            <p>(Interactive time-series charts would be displayed here)</p>
+        </div>
+    );
+};
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value } = e.target;
-        setVitals(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+const VitalsTrendsCard: React.FC<{ latest?: VitalsRecord, previous?: VitalsRecord }> = ({ latest, previous }) => {
+    const calculateDelta = (key: keyof VitalsMeasurements) => {
+        const l = latest?.measurements[key];
+        const p = previous?.measurements[key];
+        if (typeof l === 'number' && typeof p === 'number') {
+            const delta = l - p;
+            const percent = p !== 0 ? (delta / p) * 100 : 0;
+            const sign = delta > 0 ? '↑' : '↓';
+            return <span className={delta > 0 ? 'text-red-500' : 'text-green-500'}>{sign} {Math.abs(delta).toFixed(1)} ({percent.toFixed(0)}%)</span>;
+        }
+        return <span className="text-text-tertiary">-</span>;
     };
+    
+    return (
+        <div className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
+            <h4 className="font-semibold text-text-secondary mb-2">Trends (vs previous)</h4>
+            <div className="space-y-1 text-sm">
+                <div className="flex justify-between"><span>Temp (°C):</span> {calculateDelta('temp_c')}</div>
+                <div className="flex justify-between"><span>Pulse (bpm):</span> {calculateDelta('pulse')}</div>
+                <div className="flex justify-between"><span>SpO₂ (%):</span> {calculateDelta('spo2')}</div>
+            </div>
+        </div>
+    );
+};
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        addVitalsRecord(patient.id, vitals);
-        setVitals({ hr: 0, bpSys: 0, bpDia: 0, rr: 0, spo2: 0, temp: 0 }); // Reset form
-    };
+const VitalsAlertsPanel: React.FC<{ measurements?: VitalsMeasurements | null }> = ({ measurements }) => {
+    const alerts = useMemo(() => {
+        if (!measurements) return [];
+        const foundAlerts: string[] = [];
+        if (measurements.temp_c && measurements.temp_c >= 38.0) foundAlerts.push(`Fever (${measurements.temp_c}°C)`);
+        if (measurements.spo2 && measurements.spo2 < 92) foundAlerts.push(`Hypoxia (${measurements.spo2}%)`);
+        if (measurements.pulse && measurements.pulse > 120) foundAlerts.push(`Tachycardia (${measurements.pulse} bpm)`);
+        if (measurements.bp_sys && measurements.bp_sys < 90) foundAlerts.push(`Hypotension (${measurements.bp_sys} mmHg)`);
+        return foundAlerts;
+    }, [measurements]);
 
     return (
-        <div className="p-4 md:p-6 space-y-6">
-            <h3 className="text-2xl font-bold text-text-primary">Vitals</h3>
-            {/* Vitals Summary Table */}
-            <div className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
-                <h4 className="font-semibold mb-2 text-text-secondary">Latest Readings</h4>
-                <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-center">
-                    {Object.entries({ hr: 'Pulse', bpSys: 'BP', rr: 'RR', spo2: 'SpO₂', temp: 'Temp' }).map(([key, label]) => (
-                        <div key={key}>
-                            <p className="text-sm text-text-tertiary">{label}</p>
-                            <p className="text-xl font-bold text-text-primary">
-                                {key === 'bpSys' ? `${patient.vitals?.bpSys || 'N/A'}/${patient.vitals?.bpDia || ''}` : patient.vitals?.[key as keyof Vitals] || 'N/A'}
-                            </p>
-                        </div>
+         <div className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color">
+            <h4 className="font-semibold text-text-secondary mb-2">Alerts (Current)</h4>
+            {alerts.length > 0 ? (
+                 <div className="space-y-2">
+                    {alerts.map(alert => (
+                        <div key={alert} className="p-2 bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 text-red-800 dark:text-red-200 text-sm font-semibold">{alert}</div>
                     ))}
                 </div>
-            </div>
-            
-            {/* Add New Vitals Form */}
-            <form onSubmit={handleSubmit} className="bg-background-primary p-4 rounded-lg shadow-sm border border-border-color space-y-4">
-                 <h4 className="font-semibold text-text-secondary">Add New Entry</h4>
-                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {Object.entries({ hr: 'HR', bpSys: 'BP Sys', bpDia: 'BP Dia', rr: 'RR', spo2: 'SpO₂', temp: 'Temp' }).map(([key, label]) => (
-                        <div key={key}>
-                            <label className="block text-sm font-medium text-text-secondary">{label}</label>
-                            <input type="number" name={key} value={vitals[key as keyof Vitals] > 0 ? vitals[key as keyof Vitals] : ''} onChange={handleChange} className="mt-1 block w-full p-2 border border-border-color rounded-md bg-background-primary text-input-text" required />
-                        </div>
-                    ))}
-                </div>
-                <div className="text-right">
-                    <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-brand-blue rounded-md">Add Vitals Entry</button>
-                </div>
-            </form>
+            ) : <p className="text-sm text-text-tertiary">No active alerts.</p>}
+         </div>
+    );
+};
 
-            {/* Vitals History */}
-             <div>
-                <h4 className="text-lg font-semibold text-text-secondary mb-2">Trend Chart</h4>
-                <div className="bg-background-primary p-8 rounded-lg shadow-sm border border-border-color text-center text-text-tertiary">
-                    Vital trend charts would be displayed here.
+
+const VitalsTab: React.FC<{ patient: Patient }> = ({ patient }) => {
+    const { addVitalsRecord, summarizeVitals, isLoading } = useContext(AppContext) as AppContextType;
+    const [aiSummary, setAiSummary] = useState<string | null>(null);
+
+    const handleSaveVitals = (entry: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => {
+        addVitalsRecord(patient.id, entry);
+    };
+
+    const handleGenerateSummary = async () => {
+        const summary = await summarizeVitals(patient.id);
+        setAiSummary(summary);
+    };
+
+    const latestVitals = patient.vitalsHistory[0];
+    const previousVitals = patient.vitalsHistory[1];
+    
+    return (
+        <div className="p-4 md:p-6 space-y-6">
+            <VitalsHeader patient={patient} onGenerateSummary={handleGenerateSummary} isLoading={isLoading} />
+             {aiSummary && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+                    <h4 className="font-semibold text-blue-800 dark:text-blue-300 flex items-center gap-2"><SparklesIcon /> AI Summary</h4>
+                    <p className="text-sm text-text-secondary mt-1 italic">{aiSummary}</p>
+                </div>
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-1 space-y-6">
+                    <VitalsEntryCard patient={patient} onSave={handleSaveVitals} />
+                    <VitalsTrendsCard latest={latestVitals} previous={previousVitals} />
+                    <VitalsAlertsPanel measurements={latestVitals?.measurements} />
+                </div>
+                <div className="lg:col-span-2 space-y-6">
+                    <VitalsChartPanel />
+                    <VitalsList vitalsHistory={patient.vitalsHistory} />
                 </div>
             </div>
         </div>

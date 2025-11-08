@@ -1,7 +1,9 @@
 
 
+
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { AITriageSuggestion, Department, TriageLevel, SOAPNote, TeamNote, FollowUpQuestion, ComposedHistory, Patient, Order, OrderCategory, PatientOverview, Vitals, ClinicalFileSections, OrderPriority } from '../types';
+import { AITriageSuggestion, Department, TriageLevel, SOAPNote, TeamNote, FollowUpQuestion, ComposedHistory, Patient, Order, OrderCategory, PatientOverview, Vitals, ClinicalFileSections, OrderPriority, Round, VitalsRecord } from '../types';
 import { getFromCache, setInCache } from './caching';
 
 
@@ -211,9 +213,9 @@ export const generateOverviewSummary = async (patient: Patient): Promise<Patient
         Generate a concise overview for a clinician.
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}.
         Chief Complaint: ${patient.complaint}.
-        Current Vitals: ${patient.vitals ? `HR: ${patient.vitals.hr}, BP: ${patient.vitals.bpSys}/${patient.vitals.bpDia}, SpO2: ${patient.vitals.spo2}%` : 'Not recorded'}.
+        Current Vitals: ${patient.vitals ? `Pulse: ${patient.vitals.pulse}, BP: ${patient.vitals.bp_sys}/${patient.vitals.bp_dia}, SpO2: ${patient.vitals.spo2}%` : 'Not recorded'}.
         Active Orders: ${patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress').map(o => o.label).join(', ') || 'None'}.
-        Latest Round Summary: ${patient.rounds[0]?.summaryText || 'No rounds yet'}.
+        Latest Round Summary: ${patient.rounds.find(r => r.status === 'signed')?.subjective || 'No rounds yet'}.
     `;
     try {
         const response = await ai.models.generateContent({
@@ -328,23 +330,6 @@ export const suggestOrdersFromClinicalFile = async (sections: ClinicalFileSectio
     }
 };
 
-export const generateRoundSummary = async (doctorNotes: string, vitals?: Vitals): Promise<string> => {
-    const context = `
-        Doctor's notes for the round: "${doctorNotes}"
-        Vitals at time of round: ${vitals ? `HR: ${vitals.hr}, BP: ${vitals.bpSys}/${vitals.bpDia}, SpO2: ${vitals.spo2}%` : 'Not recorded'}.
-    `;
-    try {
-        const response = await ai.models.generateContent({
-            model: flashModel,
-            contents: `Based on the following notes and vitals from a doctor's round, generate a very brief, one-line summary (e.g., "Patient stable, fever reducing."). \n\n${context}`,
-        });
-        return response.text.trim();
-    } catch (error) {
-        console.error("Error generating round summary:", error);
-        return "Summary generation failed.";
-    }
-};
-
 export const compileDischargeSummary = async (patient: Patient): Promise<string> => {
     const context = `
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}
@@ -354,7 +339,7 @@ export const compileDischargeSummary = async (patient: Patient): Promise<string>
         ${JSON.stringify(patient.clinicalFile.sections)}
         
         Rounds Summary:
-        ${patient.rounds.map(r => `[${new Date(r.timestamp).toLocaleDateString()}] Round ${r.roundNumber}: ${r.summaryText} - ${r.doctorNotes}`).join('\n')}
+        ${patient.rounds.map(r => `[${new Date(r.createdAt).toLocaleDateString()}] Round: S:${r.subjective} O:${r.objective} A:${r.assessment} P:${r.plan.text}`).join('\n')}
         
         Final Orders:
         ${patient.orders.filter(o => o.status === 'completed' || o.status === 'sent').map(o => `- ${o.category}: ${o.label}`).join('\n')}
@@ -431,5 +416,134 @@ export const composeHistoryParagraph = async (section: keyof ClinicalFileSection
     } catch (error) {
         console.error(`Error composing history for ${section}:`, error);
         return { paragraph: `Based on the initial report of "${seedText}", the following was noted: ${Object.values(answers).join('. ')}.` }; // Simple fallback
+    }
+};
+
+// --- NEW ROUNDS AI FUNCTIONS ---
+
+export const summarizeChangesSinceLastRound = async (lastRoundAt: string, patient: Patient): Promise<{ summary: string; highlights: string[] }> => {
+    // This is a simplified version. A real implementation would fetch changes from a backend.
+    const context = `
+        Summarize changes since the last round at ${new Date(lastRoundAt).toLocaleString()}.
+        Current Vitals: ${JSON.stringify(patient.vitals)}
+        New Orders: ${patient.orders.filter(o => new Date(o.createdAt) > new Date(lastRoundAt)).map(o => o.label).join(', ') || 'None'}
+    `;
+    try {
+        const response = await ai.models.generateContent({
+            model: flashModel,
+            contents: `Generate a 1-line summary and a short list of highlights (e.g., "New CXR report", "Hb ↑") based on the following patient data changes. \n\n${context}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        summary: { type: Type.STRING },
+                        highlights: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ['summary', 'highlights'],
+                },
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error summarizing changes:", error);
+        return { summary: "Failed to generate summary.", highlights: ["API error"] };
+    }
+};
+
+export const generateSOAPForRound = async (patient: Patient): Promise<Partial<Round>> => {
+    const context = `
+        Patient Clinical File: ${JSON.stringify(patient.clinicalFile.sections)}
+        Latest Vitals: ${JSON.stringify(patient.vitals)}
+        Active Orders: ${patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress').map(o => o.label).join(', ')}
+        Previous Round: ${JSON.stringify(patient.rounds.find(r => r.status === 'signed'))}
+    `;
+     try {
+        const response = await ai.models.generateContent({
+            model: proModel,
+            contents: `Generate a draft SOAP note for a new clinical round based on the provided patient context. \n\n${context}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        subjective: { type: Type.STRING },
+                        objective: { type: Type.STRING },
+                        assessment: { type: Type.STRING },
+                        plan: { 
+                            type: Type.OBJECT,
+                            properties: {
+                                text: { type: Type.STRING }
+                            }
+                        },
+                    },
+                    required: ['subjective', 'objective', 'assessment', 'plan'],
+                },
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error generating SOAP for round:", error);
+        throw error;
+    }
+};
+
+export const crossCheckRound = async (patient: Patient, roundDraft: Round): Promise<{ contradictions: string[]; missingFollowups: string[] }> => {
+     const context = `
+        Patient History: ${JSON.stringify(patient.clinicalFile.sections.history)}
+        Patient GPE: ${JSON.stringify(patient.clinicalFile.sections.gpe)}
+        Draft Round Note: ${JSON.stringify(roundDraft)}
+    `;
+    try {
+        const response = await ai.models.generateContent({
+            model: proModel,
+            contents: `Cross-check the draft round note against the patient's history and GPE. Identify any direct contradictions or clear missing follow-ups. If none, return empty arrays. \n\n${context}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        contradictions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        missingFollowups: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    },
+                    required: ['contradictions', 'missingFollowups'],
+                },
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error cross-checking round:", error);
+        return { contradictions: ["AI check failed. Please review manually."], missingFollowups: [] };
+    }
+};
+
+// --- NEW VITALS TAB AI FUNCTION ---
+export const summarizeVitals = async (vitalsHistory: VitalsRecord[]): Promise<{ summary: string }> => {
+    const formattedHistory = vitalsHistory.slice(0, 10).map(v => 
+        `At ${new Date(v.recordedAt).toLocaleTimeString()}: ` +
+        Object.entries(v.measurements).map(([key, value]) => `${key.replace('_', ' ')}: ${value}`).join(', ')
+    ).join('\n');
+
+    const context = `Summarize the following recent vitals trend for a clinical handover note. Focus on stability, significant changes, and any abnormal readings. \n\n${formattedHistory}`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: flashModel,
+            contents: context,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        summary: { type: Type.STRING, description: "A concise summary of the vitals trend." },
+                    },
+                    required: ['summary'],
+                },
+            },
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error summarizing vitals:", error);
+        return { summary: "Failed to generate AI summary." };
     }
 };

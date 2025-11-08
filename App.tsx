@@ -1,14 +1,18 @@
 
 
+
+
+
+
 import React, { useState, useCallback, useEffect } from 'react';
-import { AppContextType, Page, Patient, Vitals, VitalsRecord, ChatMessage, TeamNote, SOAPNote, Checklist, User, AuditEvent, Order, AITriageSuggestion, OrderStatus, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, OrderCategory } from './types';
+import { AppContextType, Page, Patient, Vitals, VitalsRecord, ChatMessage, TeamNote, SOAPNote, Checklist, User, AuditEvent, Order, AITriageSuggestion, OrderStatus, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, OrderCategory, VitalsMeasurements } from './types';
 import DashboardPage from './pages/DashboardPage';
 import ReceptionPage from './pages/ReceptionPage';
 import TriagePage from './pages/TriagePage';
 import PatientDetailPage from './pages/PatientDetailPage';
 import Header from './components/Header';
 import ChatPanel from './components/ChatPanel';
-import { classifyComplaint, suggestOrdersFromClinicalFile, compileDischargeSummary, generateOverviewSummary, summarizeClinicalFile, generateRoundSummary, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph } from './services/geminiService';
+import { classifyComplaint, suggestOrdersFromClinicalFile, compileDischargeSummary, generateOverviewSummary, summarizeClinicalFile, crossCheckRound, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph, summarizeVitals as summarizeVitalsFromService } from './services/geminiService';
 import { calculateTriageFromVitals, seedPatients, logAuditEventToServer, MOCK_DOCTOR } from './services/api';
 import { answerWithRAG } from './services/geminiService';
 
@@ -62,7 +66,7 @@ const App: React.FC = () => {
         loadInitialData();
     }, []);
 
-    const addPatient = useCallback(async (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview'>) => {
+    const addPatient = useCallback(async (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview' | 'results' | 'vitals'>) => {
         setIsLoading(true);
         setError(null);
 
@@ -95,6 +99,7 @@ const App: React.FC = () => {
             triage: { level: 'None', reasons: [] },
             timeline: [],
             orders: [],
+            results: [],
             vitalsHistory: [],
             clinicalFile: { 
                 id: `CF-${patientId}`, 
@@ -119,12 +124,31 @@ const App: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const triage = calculateTriageFromVitals(vitals);
-            const newVitalsRecord = { ...vitals, timestamp: new Date().toISOString(), enteredBy: currentUser.id };
+            // Map from simple Vitals (Triage form) to VitalsMeasurements
+            const measurements: VitalsMeasurements = {
+                pulse: vitals.hr,
+                bp_sys: vitals.bpSys,
+                bp_dia: vitals.bpDia,
+                rr: vitals.rr,
+                spo2: vitals.spo2,
+                temp_c: vitals.temp,
+            };
+            
+            const triage = calculateTriageFromVitals(measurements);
+            
+            const newVitalsRecord: VitalsRecord = {
+                vitalId: `VIT-${Date.now()}`,
+                patientId,
+                recordedAt: new Date().toISOString(),
+                recordedBy: currentUser.id,
+                source: 'manual',
+                measurements
+            };
+            
             setPatients(prev =>
                 prev.map(p =>
                     p.id === patientId
-                    ? { ...p, vitals, triage, status: 'Waiting for Doctor', vitalsHistory: [...p.vitalsHistory, newVitalsRecord] }
+                    ? { ...p, vitals: measurements, triage, status: 'Waiting for Doctor', vitalsHistory: [newVitalsRecord, ...p.vitalsHistory] }
                     : p
                 )
             );
@@ -138,18 +162,20 @@ const App: React.FC = () => {
         }
     }, [currentUser.id]);
     
-    const addVitalsRecord = useCallback((patientId: string, vitals: Vitals) => {
+    const addVitalsRecord = useCallback((patientId: string, entryData: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => {
         const newRecord: VitalsRecord = {
-            ...vitals,
-            timestamp: new Date().toISOString(),
-            enteredBy: currentUser.id,
+            ...entryData,
+            vitalId: `VIT-${Date.now()}`,
+            patientId: patientId,
+            recordedAt: new Date().toISOString(),
+            recordedBy: currentUser.id,
         };
         setPatients(prev => prev.map(p =>
-            p.id === patientId ? { ...p, vitals, vitalsHistory: [newRecord, ...p.vitalsHistory] } : p
+            p.id === patientId ? { ...p, vitals: entryData.measurements, vitalsHistory: [newRecord, ...p.vitalsHistory] } : p
         ));
         logAuditEvent({
             userId: currentUser.id, patientId, action: 'create', entity: 'vitals',
-            payload: { vitals }
+            payload: { vitals: entryData.measurements }
         });
     }, [currentUser.id]);
 
@@ -190,6 +216,12 @@ const App: React.FC = () => {
                     ...p.clinicalFile.sections.gpe?.flags,
                     ...(data as any).flags
                 };
+            }
+            if (sectionKey === 'gpe' && 'vitals' in data) {
+                (newSections.gpe as any).vitals = {
+                    ...p.clinicalFile.sections.gpe?.vitals,
+                    ...(data as any).vitals
+                }
             }
 
             return { 
@@ -335,16 +367,7 @@ const App: React.FC = () => {
         const updatedFile = { ...patient.clinicalFile, status: 'signed' as const, signedAt: new Date().toISOString(), signedBy: currentUser.id };
         
         // 2. Create first Round
-        const newRound: Round = {
-            id: `RND-${patientId}-1`,
-            patientId,
-            roundNumber: 1,
-            clinicianId: currentUser.id,
-            timestamp: new Date().toISOString(),
-            vitalsSnapshot: patient.vitals || { hr: 0, bpSys: 0, bpDia: 0, rr: 0, spo2: 0, temp: 0 },
-            summaryText: "Initial assessment complete.",
-            doctorNotes: "Clinical file signed off. Awaiting initial orders."
-        };
+        // This is now handled by the Rounds tab itself.
         
         // 3. Generate suggested orders
         let suggestedOrders: Order[] = [];
@@ -375,7 +398,6 @@ const App: React.FC = () => {
         setPatients(prev => prev.map(p => p.id === patientId ? {
             ...p,
             clinicalFile: updatedFile,
-            rounds: [newRound],
             orders: [...p.orders, ...suggestedOrders]
         } : p));
 
@@ -503,26 +525,82 @@ const App: React.FC = () => {
         }
     }, [patients]);
     
-    const addRoundToPatient = useCallback(async (patientId: string, doctorNotes: string) => {
+    // --- NEW ROUNDS FUNCTIONS ---
+    const createDraftRound = useCallback(async (patientId: string): Promise<Round> => {
         const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
+        if (!patient) throw new Error("Patient not found");
 
-        const summaryText = await generateRoundSummary(doctorNotes, patient.vitals);
+        const existingDraft = patient.rounds.find(r => r.status === 'draft');
+        if (existingDraft) return existingDraft;
 
-        const newRound: Round = {
-            id: `RND-${patientId}-${patient.rounds.length + 1}`,
+        const newDraft: Round = {
+            roundId: `RND-${patientId}-${Date.now()}`,
             patientId,
-            roundNumber: patient.rounds.length + 1,
-            clinicianId: currentUser.id,
-            timestamp: new Date().toISOString(),
-            vitalsSnapshot: patient.vitals || { hr: 0, bpSys: 0, bpDia: 0, rr: 0, spo2: 0, temp: 0 },
-            summaryText,
-            doctorNotes,
+            doctorId: currentUser.id,
+            createdAt: new Date().toISOString(),
+            status: 'draft',
+            subjective: '',
+            objective: '',
+            assessment: '',
+            plan: { text: '', linkedOrders: [] },
+            linkedResults: [],
+            signedBy: null,
+            signedAt: null,
         };
-
-        setPatients(prev => prev.map(p => p.id === patientId ? { ...p, rounds: [newRound, ...p.rounds] } : p));
-        logAuditEvent({ userId: currentUser.id, patientId, action: 'create', entity: 'round', entityId: newRound.id });
+        
+        setPatients(prev => prev.map(p => p.id === patientId ? { ...p, rounds: [newDraft, ...p.rounds] } : p));
+        logAuditEvent({ userId: currentUser.id, patientId, action: 'create', entity: 'round', entityId: newDraft.roundId });
+        
+        return newDraft;
     }, [patients, currentUser]);
+
+    const updateDraftRound = useCallback((patientId: string, roundId: string, updates: Partial<Round>) => {
+        setPatients(prev => prev.map(p => {
+            if (p.id !== patientId) return p;
+            const newRounds = p.rounds.map(r => 
+                r.roundId === roundId ? { ...r, ...updates } : r
+            );
+            return { ...p, rounds: newRounds };
+        }));
+    }, []);
+
+    const signOffRound = useCallback(async (patientId: string, roundId: string) => {
+        setIsLoading(true);
+        const patient = patients.find(p => p.id === patientId);
+        const round = patient?.rounds.find(r => r.roundId === roundId);
+
+        if (!patient || !round) {
+            setError("Round not found.");
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const { contradictions } = await crossCheckRound(patient, round);
+            
+            let proceed = true;
+            if (contradictions.length > 0) {
+                // This logic is now handled by the SignoffModal in the component
+            }
+            
+            // For now, proceeding as if confirmed
+            setPatients(prev => prev.map(p => {
+                if (p.id !== patientId) return p;
+                const newRounds = p.rounds.map(r => 
+                    r.roundId === roundId ? { ...r, status: 'signed' as const, signedAt: new Date().toISOString(), signedBy: currentUser.id } : r
+                );
+                return { ...p, rounds: newRounds };
+            }));
+             logAuditEvent({ userId: currentUser.id, patientId, action: 'signoff', entity: 'round', entityId: roundId, payload: { acknowledged_contradictions: contradictions } });
+            
+        } catch (e) {
+            console.error("Failed to cross-check round:", e);
+            setError("AI cross-check failed. Please review manually before sign-off.");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [patients, currentUser]);
+
 
     const summarizePatientClinicalFile = useCallback(async (patientId: string) => {
         setIsLoading(true);
@@ -538,6 +616,25 @@ const App: React.FC = () => {
         }
     }, [patients]);
     
+    const summarizeVitals = useCallback(async (patientId: string): Promise<string | null> => {
+        setIsLoading(true);
+        const patient = patients.find(p => p.id === patientId);
+        if (!patient || patient.vitalsHistory.length < 2) {
+            setIsLoading(false);
+            return "Not enough data for a summary.";
+        };
+        try {
+            const { summary } = await summarizeVitalsFromService(patient.vitalsHistory);
+            return summary;
+        } catch (e) {
+            console.error("Failed to summarize vitals:", e);
+            return "AI summary generation failed.";
+        } finally {
+            setIsLoading(false);
+        }
+    }, [patients]);
+
+
     // --- CLINICAL FILE TAB AI FUNCTIONS ---
     const formatHpi = useCallback(async (patientId: string) => {
         const patient = patients.find(p => p.id === patientId);
@@ -668,7 +765,7 @@ const App: React.FC = () => {
 
         let inconsistencies: string[] = [];
         const historyText = JSON.stringify(patient.clinicalFile.sections.history).toLowerCase();
-        const gpeTemp = patient.clinicalFile.sections.gpe?.vitals?.temp;
+        const gpeTemp = patient.clinicalFile.sections.gpe?.vitals?.temp_c;
 
         if (historyText.includes('fever') && gpeTemp && gpeTemp < 37.5) {
             inconsistencies.push("History mentions 'fever', but current temperature in GPE is normal. Please verify.");
@@ -814,8 +911,12 @@ const App: React.FC = () => {
         generateDischargeSummary,
         addOrderToPatient,
         generatePatientOverview,
-        addRoundToPatient,
         summarizePatientClinicalFile,
+        summarizeVitals,
+        // Rounds Functions
+        createDraftRound,
+        updateDraftRound,
+        signOffRound,
         // Clinical File Tab AI Functions
         updateClinicalFileSection,
         formatHpi,

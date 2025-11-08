@@ -1,5 +1,6 @@
 
 
+
 export type Role = 'Intern' | 'Doctor' | 'Admin';
 export type TriageLevel = 'Red' | 'Yellow' | 'Green' | 'None';
 export type PatientStatus = 'Waiting for Triage' | 'Waiting for Doctor' | 'In Treatment' | 'Discharged';
@@ -43,11 +44,33 @@ export interface Vitals {
   temp: number; // Temperature (Celsius)
 }
 
-// Phase 3+: To support vitals chart
-export interface VitalsRecord extends Vitals {
-    timestamp: string;
-    enteredBy: string; // User ID
+// NEW VITALS DATA STRUCTURE (Vitals Tab)
+export interface VitalsMeasurements {
+    temp_c?: number | null;
+    pulse?: number | null; // Replaces hr
+    rr?: number | null;
+    bp_sys?: number | null;
+    bp_dia?: number | null;
+    spo2?: number | null;
+    glucose_mg_dl?: number | null;
+    pain_score?: number | null; // 0-10
+    urine_output_ml?: number | null;
 }
+
+
+export interface VitalsRecord {
+  vitalId: string;
+  patientId: string;
+  recordedBy: string; // userId
+  recordedAt: string; // iso_timestamp
+  source: 'nurse' | 'monitor' | 'manual' | 'device';
+  measurements: VitalsMeasurements;
+  observations?: string | null;
+  tags?: ('pre-op' | 'post-op')[];
+  linkedOrders?: string[];
+  meta?: { deviceId: string | null; imported: boolean };
+}
+
 
 export interface Triage {
   level: TriageLevel;
@@ -165,18 +188,49 @@ export interface Order {
     };
 }
 
+// --- NEW RESULTS DATA STRUCTURE ---
+export interface Result {
+    resultId: string;
+    patientId: string;
+    orderId: string;
+    type: 'lab' | 'imaging';
+    name: string;
+    timestamp: string;
+    status: 'final' | 'preliminary';
+    isAbnormal: boolean;
+    value: string;
+    unit?: string;
+    referenceRange?: string;
+    delta?: {
+        previousValue: string;
+        change: 'increase' | 'decrease' | 'stable';
+    };
+    reportUrl?: string;
+}
+
 
 export interface Round {
-    id: string;
+    roundId: string;
     patientId: string;
-    roundNumber: number;
-    clinicianId: string;
-    timestamp: string;
-    vitalsSnapshot: Vitals;
-    summaryText: string; // AI generated summary
-    doctorNotes: string; // Clinician's progress note
-    ordersChanged?: string[];
+    doctorId: string;
+    createdAt: string; // iso_timestamp
+    status: 'draft' | 'signed';
+    subjective: string;
+    objective: string;
+    assessment: string;
+    plan: {
+        text: string;
+        linkedOrders: string[];
+    };
+    linkedResults: string[];
+    ai_provenance?: {
+        prompt_id: string | null;
+        action: 'generate_soap' | 'summarize_changes' | null;
+    };
+    signedBy: string | null; // userId
+    signedAt: string | null; // iso_timestamp
 }
+
 
 export interface PatientOverview {
     summary: string;
@@ -223,7 +277,7 @@ export interface HistorySectionData {
 
 export interface GPESectionData {
     general_appearance: 'well' | 'ill' | 'toxic' | 'cachectic' | '';
-    vitals: Partial<Vitals>;
+    vitals: Partial<VitalsMeasurements>; // Updated from Vitals
     build: 'normal' | 'obese' | 'cachectic' | '';
     hydration: 'normal' | 'mild' | 'moderate' | 'severe' | '';
     flags: {
@@ -306,7 +360,7 @@ export interface Patient {
   phone: string;
   complaint: string;
   status: PatientStatus;
-  vitals?: Vitals;
+  vitals?: VitalsMeasurements;
   vitalsHistory: VitalsRecord[];
   triage: Triage;
   aiTriage?: AITriageSuggestion & { fromCache?: boolean };
@@ -316,6 +370,7 @@ export interface Patient {
   overview?: PatientOverview;
   clinicalFile: ClinicalFile;
   orders: Order[];
+  results: Result[];
   rounds: Round[];
   dischargeSummary?: {
     draft: string;
@@ -339,7 +394,7 @@ export type AppContextType = {
     setUser: (user: User) => void;
     patients: Patient[];
     auditLog: AuditEvent[];
-    addPatient: (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview'>) => Promise<void>;
+    addPatient: (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview' | 'results' | 'vitals'>) => Promise<void>;
     updatePatientVitals: (patientId: string, vitals: Vitals) => Promise<void>;
     addNoteToPatient: (patientId: string, content: string, isEscalation?: boolean) => Promise<void>;
     addSOAPNoteToPatient: (patientId: string, soapData: Omit<SOAPNote, 'id' | 'type' | 'patientId' | 'timestamp' | 'author' | 'authorId' | 'role'>, originalSuggestion: any) => Promise<void>;
@@ -358,12 +413,16 @@ export type AppContextType = {
     updateOrder: (patientId: string, orderId: string, updates: Partial<Order>) => void;
     acceptAIOrders: (patientId: string, orderIds: string[]) => void;
     sendAllDrafts: (patientId: string, category: OrderCategory) => void;
-    addVitalsRecord: (patientId: string, vitals: Vitals) => void;
+    addVitalsRecord: (patientId: string, entryData: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => void;
     generateDischargeSummary: (patientId: string) => Promise<void>;
     addOrderToPatient: (patientId: string, order: Partial<Order>) => void;
     generatePatientOverview: (patientId: string) => Promise<void>;
-    addRoundToPatient: (patientId: string, doctorNotes: string) => Promise<void>;
     summarizePatientClinicalFile: (patientId: string) => Promise<void>;
+    summarizeVitals: (patientId: string) => Promise<string | null>;
+    // Rounds Functions
+    createDraftRound: (patientId: string) => Promise<Round>;
+    updateDraftRound: (patientId: string, roundId: string, updates: Partial<Round>) => void;
+    signOffRound: (patientId: string, roundId: string) => Promise<void>;
     // Clinical File Tab Functions
     updateClinicalFileSection: <K extends keyof ClinicalFileSections>(
         patientId: string, 
