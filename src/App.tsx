@@ -1,27 +1,21 @@
-
-
-
-
-
-
 import React, { useState, useCallback, useEffect } from 'react';
-import { AppContextType, Page, Patient, Vitals, VitalsRecord, ChatMessage, TeamNote, SOAPNote, Checklist, User, AuditEvent, Order, AITriageSuggestion, OrderStatus, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, OrderCategory, VitalsMeasurements } from './types';
+import { AppContextType, Page, VitalsRecord, ChatMessage, TeamNote, SOAPNote, Checklist, User, AuditEvent, Order, OrderStatus, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, OrderCategory } from './types';
 import DashboardPage from './pages/DashboardPage';
 import ReceptionPage from './pages/ReceptionPage';
 import TriagePage from './pages/TriagePage';
 import PatientDetailPage from './pages/PatientDetailPage';
 import Header from './components/Header';
 import ChatPanel from './components/ChatPanel';
-import { classifyComplaint, suggestOrdersFromClinicalFile, compileDischargeSummary, generateOverviewSummary, summarizeClinicalFile, crossCheckRound, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph, summarizeVitals as summarizeVitalsFromService } from './services/geminiService';
-import { calculateTriageFromVitals, seedPatients, logAuditEventToServer, MOCK_DOCTOR } from './services/api';
+import { suggestOrdersFromClinicalFile, compileDischargeSummary, generateOverviewSummary, summarizeClinicalFile, crossCheckRound, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph, summarizeVitals as summarizeVitalsFromService } from './services/geminiService';
+import { seedPatients, logAuditEventToServer, MOCK_DOCTOR } from './services/api';
 import { answerWithRAG } from './services/geminiService';
+import { usePatients } from './hooks/usePatients';
 
 export const AppContext = React.createContext<AppContextType | null>(null);
 
 const App: React.FC = () => {
     const [page, _setPage] = useState<Page>('dashboard');
     const [currentUser, setUser] = useState<User>(MOCK_DOCTOR);
-    const [patients, setPatients] = useState<Patient[]>([]);
     const [auditLog, setAuditLog] = useState<AuditEvent[]>([]);
     const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -29,6 +23,14 @@ const App: React.FC = () => {
     const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+    const { patients, setPatients, addPatient, updatePatientVitals } = usePatients(
+        setIsLoading,
+        setError,
+        _setPage,
+        setSelectedPatientId,
+        currentUser
+    );
 
     // Wrapped setPage to clear errors on navigation
     const setPage = (newPage: Page) => {
@@ -64,104 +66,8 @@ const App: React.FC = () => {
             }
         };
         loadInitialData();
-    }, []);
+    }, [setPatients]);
 
-    const addPatient = useCallback(async (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview' | 'results' | 'vitals'>) => {
-        setIsLoading(true);
-        setError(null);
-
-        let aiTriageWithCache: AITriageSuggestion & { fromCache: boolean };
-
-        try {
-            const result = await classifyComplaint(patientData.complaint);
-            aiTriageWithCache = { ...result.data, fromCache: result.fromCache };
-        } catch (e) {
-            console.error("AI classification failed, but patient will be added:", e);
-            aiTriageWithCache = {
-                department: 'Unknown',
-                suggested_triage: 'None',
-                confidence: 0,
-                fromCache: false
-            };
-            const errorString = String(e);
-            if (errorString.includes("RESOURCE_EXHAUSTED") || errorString.includes("429")) {
-                setError("AI Advisory unavailable due to API quota. Patient was registered without AI suggestion.");
-            }
-        }
-        
-        const patientId = `PAT-${Date.now()}`;
-        const newPatient: Patient = {
-            ...patientData,
-            id: patientId,
-            status: 'Waiting for Triage',
-            registrationTime: new Date().toISOString(),
-            aiTriage: aiTriageWithCache,
-            triage: { level: 'None', reasons: [] },
-            timeline: [],
-            orders: [],
-            results: [],
-            vitalsHistory: [],
-            clinicalFile: { 
-                id: `CF-${patientId}`, 
-                patientId, 
-                status: 'draft',
-                aiSuggestions: {},
-                sections: {
-                    history: { chief_complaint: patientData.complaint, associated_symptoms: [], allergy_history: [], review_of_systems: {} },
-                    gpe: { flags: { pallor: false, icterus: false, cyanosis: false, clubbing: false, lymphadenopathy: false, edema: false }},
-                    systemic: {}
-                }
-            },
-            rounds: [],
-        };
-
-        setPatients(prev => [newPatient, ...prev]);
-        setIsLoading(false);
-        setPage('dashboard');
-    }, []);
-
-    const updatePatientVitals = useCallback(async (patientId: string, vitals: Vitals) => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            // Map from simple Vitals (Triage form) to VitalsMeasurements
-            const measurements: VitalsMeasurements = {
-                pulse: vitals.hr,
-                bp_sys: vitals.bpSys,
-                bp_dia: vitals.bpDia,
-                rr: vitals.rr,
-                spo2: vitals.spo2,
-                temp_c: vitals.temp,
-            };
-            
-            const triage = calculateTriageFromVitals(measurements);
-            
-            const newVitalsRecord: VitalsRecord = {
-                vitalId: `VIT-${Date.now()}`,
-                patientId,
-                recordedAt: new Date().toISOString(),
-                recordedBy: currentUser.id,
-                source: 'manual',
-                measurements
-            };
-            
-            setPatients(prev =>
-                prev.map(p =>
-                    p.id === patientId
-                    ? { ...p, vitals: measurements, triage, status: 'Waiting for Doctor', vitalsHistory: [newVitalsRecord, ...p.vitalsHistory] }
-                    : p
-                )
-            );
-            setPage('dashboard');
-            setSelectedPatientId(null);
-        } catch (e) {
-            setError('Failed to process vitals.');
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [currentUser.id]);
-    
     const addVitalsRecord = useCallback((patientId: string, entryData: Pick<VitalsRecord, 'measurements' | 'observations' | 'source'>) => {
         const newRecord: VitalsRecord = {
             ...entryData,
@@ -177,7 +83,7 @@ const App: React.FC = () => {
             userId: currentUser.id, patientId, action: 'create', entity: 'vitals',
             payload: { vitals: entryData.measurements }
         });
-    }, [currentUser.id]);
+    }, [currentUser.id, setPatients]);
 
     const addNoteToPatient = useCallback(async (patientId: string, content: string, isEscalation: boolean = false) => {
         const newNote: TeamNote = {
@@ -192,11 +98,11 @@ const App: React.FC = () => {
             timestamp: new Date().toISOString(),
         };
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, timeline: [newNote, ...p.timeline] } : p));
-    }, [currentUser]);
-    
+    }, [currentUser, setPatients]);
+
     const updateClinicalFileSection = useCallback(<K extends keyof ClinicalFileSections>(
-        patientId: string, 
-        sectionKey: K, 
+        patientId: string,
+        sectionKey: K,
         data: Partial<ClinicalFileSections[K]>
     ) => {
         setPatients(prev => prev.map(p => {
@@ -209,7 +115,7 @@ const App: React.FC = () => {
                     ...data
                 }
             };
-            
+
             // Special handling for nested objects like 'flags' in GPE
             if (sectionKey === 'gpe' && 'flags' in data) {
                  (newSections.gpe as any).flags = {
@@ -224,15 +130,15 @@ const App: React.FC = () => {
                 }
             }
 
-            return { 
-                ...p, 
-                clinicalFile: { 
-                    ...p.clinicalFile, 
-                    sections: newSections 
-                } 
+            return {
+                ...p,
+                clinicalFile: {
+                    ...p.clinicalFile,
+                    sections: newSections
+                }
             };
         }));
-    }, []);
+    }, [setPatients]);
 
     const updatePatientComplaint = useCallback((patientId: string, newComplaint: string) => {
         setPatients(prev =>
@@ -247,7 +153,7 @@ const App: React.FC = () => {
             entity: 'patient_record',
             payload: { field: 'chiefComplaint', finalContent: newComplaint },
         });
-    }, [currentUser]);
+    }, [currentUser, setPatients]);
 
     const addSOAPNoteToPatient = useCallback(async (patientId: string, soapData: Omit<SOAPNote, 'id' | 'type' | 'patientId' | 'timestamp' | 'author' | 'authorId' | 'role'>, originalSuggestion: any) => {
         const newSOAP: SOAPNote = {
@@ -263,7 +169,7 @@ const App: React.FC = () => {
 
         const finalContent = { s: newSOAP.s, o: newSOAP.o, a: newSOAP.a, p: newSOAP.p };
         const wasModified = JSON.stringify(originalSuggestion) !== JSON.stringify(finalContent);
-        
+
         logAuditEvent({
             userId: currentUser.id,
             patientId,
@@ -278,7 +184,7 @@ const App: React.FC = () => {
         });
 
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, timeline: [newSOAP, ...p.timeline] } : p));
-    }, [currentUser]);
+    }, [currentUser, setPatients]);
 
     const addChecklistToPatient = useCallback(async (patientId: string, title: string, items: string[]) => {
         const newChecklist: Checklist = {
@@ -293,7 +199,7 @@ const App: React.FC = () => {
             items: items.map(itemText => ({ text: itemText, checked: false })),
         };
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, timeline: [newChecklist, ...p.timeline] } : p));
-    }, [currentUser]);
+    }, [currentUser, setPatients]);
 
      const toggleChecklistItem = useCallback((patientId: string, checklistId: string, itemIndex: number) => {
         setPatients(prev => prev.map(p => {
@@ -308,7 +214,7 @@ const App: React.FC = () => {
             });
             return { ...p, timeline: newTimeline };
         }));
-    }, []);
+    }, [setPatients]);
 
     const sendChatMessage = useCallback(async (message: string, patientContextId?: string | null) => {
         const userMessage: ChatMessage = { role: 'user', content: message };
@@ -351,9 +257,9 @@ const App: React.FC = () => {
         logAuditEventToServer(newEvent);
         console.log("AUDIT EVENT:", newEvent);
     }, []);
-    
+
     // --- PATIENT WORKSPACE FUNCTIONS ---
-    
+
     const signOffClinicalFile = useCallback(async (patientId: string) => {
         setIsLoading(true);
         const patient = patients.find(p => p.id === patientId);
@@ -365,10 +271,10 @@ const App: React.FC = () => {
 
         // 1. Update ClinicalFile status
         const updatedFile = { ...patient.clinicalFile, status: 'signed' as const, signedAt: new Date().toISOString(), signedBy: currentUser.id };
-        
+
         // 2. Create first Round
         // This is now handled by the Rounds tab itself.
-        
+
         // 3. Generate suggested orders
         let suggestedOrders: Order[] = [];
         try {
@@ -393,7 +299,7 @@ const App: React.FC = () => {
             console.error("Failed to get AI order suggestions:", e);
             setError("AI order suggestion failed. Please add orders manually.");
         }
-        
+
         // 4. Update patient state
         setPatients(prev => prev.map(p => p.id === patientId ? {
             ...p,
@@ -404,10 +310,10 @@ const App: React.FC = () => {
         logAuditEvent({
             userId: currentUser.id, patientId, action: 'signoff', entity: 'clinical_file', entityId: updatedFile.id
         });
-        
+
         setIsLoading(false);
-    }, [patients, currentUser]);
-    
+    }, [patients, currentUser, setPatients]);
+
     const addOrderToPatient = useCallback((patientId: string, orderData: Partial<Order>) => {
         const newOrder: Order = {
             orderId: `ORD-${Date.now()}`,
@@ -424,15 +330,15 @@ const App: React.FC = () => {
         };
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, orders: [newOrder, ...p.orders] } : p));
         logAuditEvent({ userId: currentUser.id, patientId, action: 'create', entity: 'order', entityId: newOrder.orderId });
-    }, [currentUser]);
+    }, [currentUser, setPatients]);
 
     const updateOrder = useCallback((patientId: string, orderId: string, updates: Partial<Order>) => {
         setPatients(prev => prev.map(p => {
             if (p.id !== patientId) return p;
-            const newOrders = p.orders.map(o => o.orderId === orderId ? { 
-                ...o, 
-                ...updates, 
-                meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id } 
+            const newOrders = p.orders.map(o => o.orderId === orderId ? {
+                ...o,
+                ...updates,
+                meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id }
             } : o);
             return { ...p, orders: newOrders };
         }));
@@ -440,14 +346,14 @@ const App: React.FC = () => {
             userId: currentUser.id, patientId, action: 'modify', entity: 'order', entityId: orderId,
             payload: { updates }
         });
-    }, [currentUser.id]);
+    }, [currentUser.id, setPatients]);
 
     const acceptAIOrders = useCallback((patientId: string, orderIds: string[]) => {
         setPatients(prev => prev.map(p => {
             if (p.id !== patientId) return p;
-            const newOrders = p.orders.map(o => 
-                orderIds.includes(o.orderId) && o.status === 'draft' 
-                ? { ...o, status: 'sent' as const, meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id } } 
+            const newOrders = p.orders.map(o =>
+                orderIds.includes(o.orderId) && o.status === 'draft'
+                ? { ...o, status: 'sent' as const, meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id } }
                 : o
             );
             return { ...p, orders: newOrders };
@@ -458,21 +364,21 @@ const App: React.FC = () => {
                 payload: { from: 'ai_suggestion' }
             });
         });
-    }, [currentUser.id]);
-    
+    }, [currentUser.id, setPatients]);
+
     const sendAllDrafts = useCallback((patientId: string, category: OrderCategory) => {
         setPatients(prev => prev.map(p => {
             if (p.id !== patientId) return p;
-            
+
             let acceptedOrderIds: string[] = [];
 
             const newOrders = p.orders.map(o => {
                 if (o.category === category && o.status === 'draft') {
                     acceptedOrderIds.push(o.orderId);
-                    return { 
-                        ...o, 
-                        status: 'sent' as const, 
-                        meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id } 
+                    return {
+                        ...o,
+                        status: 'sent' as const,
+                        meta: { ...o.meta, lastModified: new Date().toISOString(), modifiedBy: currentUser.id }
                     };
                 }
                 return o;
@@ -484,10 +390,10 @@ const App: React.FC = () => {
                     payload: { from: 'bulk_send_drafts' }
                 });
             });
-            
+
             return { ...p, orders: newOrders };
         }));
-    }, [currentUser.id]);
+    }, [currentUser.id, setPatients]);
 
     const generateDischargeSummary = useCallback(async (patientId: string) => {
         setIsLoading(true);
@@ -509,8 +415,8 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [patients]);
-    
+    }, [patients, setPatients]);
+
     const generatePatientOverview = useCallback(async (patientId: string) => {
         setIsLoading(true);
         const patient = patients.find(p => p.id === patientId);
@@ -523,8 +429,8 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [patients]);
-    
+    }, [patients, setPatients]);
+
     // --- NEW ROUNDS FUNCTIONS ---
     const createDraftRound = useCallback(async (patientId: string): Promise<Round> => {
         const patient = patients.find(p => p.id === patientId);
@@ -547,22 +453,22 @@ const App: React.FC = () => {
             signedBy: null,
             signedAt: null,
         };
-        
+
         setPatients(prev => prev.map(p => p.id === patientId ? { ...p, rounds: [newDraft, ...p.rounds] } : p));
         logAuditEvent({ userId: currentUser.id, patientId, action: 'create', entity: 'round', entityId: newDraft.roundId });
-        
+
         return newDraft;
-    }, [patients, currentUser]);
+    }, [patients, currentUser, setPatients]);
 
     const updateDraftRound = useCallback((patientId: string, roundId: string, updates: Partial<Round>) => {
         setPatients(prev => prev.map(p => {
             if (p.id !== patientId) return p;
-            const newRounds = p.rounds.map(r => 
+            const newRounds = p.rounds.map(r =>
                 r.roundId === roundId ? { ...r, ...updates } : r
             );
             return { ...p, rounds: newRounds };
         }));
-    }, []);
+    }, [setPatients]);
 
     const signOffRound = useCallback(async (patientId: string, roundId: string) => {
         setIsLoading(true);
@@ -577,29 +483,29 @@ const App: React.FC = () => {
 
         try {
             const { contradictions } = await crossCheckRound(patient, round);
-            
+
             let proceed = true;
             if (contradictions.length > 0) {
                 // This logic is now handled by the SignoffModal in the component
             }
-            
+
             // For now, proceeding as if confirmed
             setPatients(prev => prev.map(p => {
                 if (p.id !== patientId) return p;
-                const newRounds = p.rounds.map(r => 
+                const newRounds = p.rounds.map(r =>
                     r.roundId === roundId ? { ...r, status: 'signed' as const, signedAt: new Date().toISOString(), signedBy: currentUser.id } : r
                 );
                 return { ...p, rounds: newRounds };
             }));
              logAuditEvent({ userId: currentUser.id, patientId, action: 'signoff', entity: 'round', entityId: roundId, payload: { acknowledged_contradictions: contradictions } });
-            
+
         } catch (e) {
             console.error("Failed to cross-check round:", e);
             setError("AI cross-check failed. Please review manually before sign-off.");
         } finally {
             setIsLoading(false);
         }
-    }, [patients, currentUser]);
+    }, [patients, currentUser, setPatients]);
 
 
     const summarizePatientClinicalFile = useCallback(async (patientId: string) => {
@@ -614,8 +520,8 @@ const App: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    }, [patients]);
-    
+    }, [patients, setPatients]);
+
     const summarizeVitals = useCallback(async (patientId: string): Promise<string | null> => {
         setIsLoading(true);
         const patient = patients.find(p => p.id === patientId);
@@ -639,7 +545,7 @@ const App: React.FC = () => {
     const formatHpi = useCallback(async (patientId: string) => {
         const patient = patients.find(p => p.id === patientId);
         if (!patient) return;
-        
+
         const hpiText = patient.clinicalFile.sections.history?.hpi?.toLowerCase() || '';
 
         // Mock AI parsing based on the user's test case for interactive chips
@@ -665,7 +571,7 @@ const App: React.FC = () => {
 
         // Only update if we have suggestions
         if (Object.keys(suggestions).length > 0) {
-            setPatients(prev => prev.map(p => 
+            setPatients(prev => prev.map(p =>
                 p.id === patientId ? {
                     ...p,
                     clinicalFile: {
@@ -678,7 +584,7 @@ const App: React.FC = () => {
                 } : p
             ));
         }
-    }, [patients]);
+    }, [patients, setPatients]);
 
     const acceptAISuggestion = useCallback((patientId: string, field: keyof AISuggestionHistory) => {
         setPatients(prev => prev.map(p => {
@@ -696,10 +602,10 @@ const App: React.FC = () => {
             } else {
                 updatedData = { [fieldToUpdate as keyof HistorySectionData]: suggestionValue };
             }
-            
+
             const newSuggestions = { ...p.clinicalFile.aiSuggestions?.history };
             delete newSuggestions[field];
-            
+
             return {
                 ...p,
                 clinicalFile: {
@@ -718,7 +624,7 @@ const App: React.FC = () => {
                 }
             };
         }));
-    }, []);
+    }, [setPatients]);
 
     const clearAISuggestions = useCallback((patientId: string, section: 'history') => {
         setPatients(prev => prev.map(p => {
@@ -734,12 +640,12 @@ const App: React.FC = () => {
                 }
             };
         }));
-    }, []);
+    }, [setPatients]);
 
     const checkMissingInfo = useCallback((patientId: string, sectionKey: keyof ClinicalFileSections) => {
         const patient = patients.find(p => p.id === patientId);
         if (!patient) return;
-        
+
         let missing: string[] = [];
         if (sectionKey === 'history') {
              if (!patient.clinicalFile.sections.history?.allergy_history || patient.clinicalFile.sections.history.allergy_history.length === 0) {
@@ -749,11 +655,11 @@ const App: React.FC = () => {
                  missing.push("Past Medical History is empty.");
              }
         }
-        
+
         setPatients(prev => prev.map(p => p.id === patientId ? {
             ...p, clinicalFile: { ...p.clinicalFile, missingInfo: missing }
         } : p));
-    }, [patients]);
+    }, [patients, setPatients]);
 
     const summarizeSection = useCallback(async (patientId: string, sectionKey: keyof ClinicalFileSections) => {
         await summarizePatientClinicalFile(patientId);
@@ -770,14 +676,14 @@ const App: React.FC = () => {
         if (historyText.includes('fever') && gpeTemp && gpeTemp < 37.5) {
             inconsistencies.push("History mentions 'fever', but current temperature in GPE is normal. Please verify.");
         }
-        
+
         setPatients(prev => prev.map(p => p.id === patientId ? {
             ...p, clinicalFile: { ...p.clinicalFile, crossCheckInconsistencies: inconsistencies }
         } : p));
-    }, [patients]);
-    
+    }, [patients, setPatients]);
+
     // --- NEW AI HISTORY COMPOSITION FUNCTIONS ---
-    
+
     const getFollowUpQuestions = useCallback(async (patientId: string, sectionKey: 'history', fieldKey: keyof HistorySectionData, seedText: string) => {
         try {
             const questions = await getFollowUpQuestionsFromService(sectionKey, seedText);
@@ -800,7 +706,7 @@ const App: React.FC = () => {
             console.error(e);
             setError(`Failed to get follow-up questions for ${fieldKey}.`);
         }
-    }, []);
+    }, [setPatients]);
 
     const updateFollowUpAnswer = useCallback((patientId: string, fieldKey: keyof HistorySectionData, questionId: string, answer: string) => {
         setPatients(prev => prev.map(p => {
@@ -821,7 +727,7 @@ const App: React.FC = () => {
                 }
             };
         }));
-    }, []);
+    }, [setPatients]);
 
     const composeHistoryWithAI = useCallback(async (patientId: string, sectionKey: 'history', fieldKey: keyof HistorySectionData) => {
         const patient = patients.find(p => p.id === patientId);
@@ -843,7 +749,7 @@ const App: React.FC = () => {
                 if (p.id !== patientId) return p;
 
                 const newHistorySection = { ...p.clinicalFile.sections.history, [fieldKey]: paragraph };
-                
+
                 const newFollowUpQuestions = { ...p.clinicalFile.aiSuggestions?.history?.followUpQuestions };
                 delete newFollowUpQuestions[fieldKey];
                 const newFollowUpAnswers = { ...p.clinicalFile.aiSuggestions?.history?.followUpAnswers };
@@ -863,7 +769,7 @@ const App: React.FC = () => {
             console.error(e);
             setError(`Failed to compose paragraph for ${fieldKey}.`);
         }
-    }, [patients]);
+    }, [patients, setPatients]);
 
 
     const renderPage = () => {
@@ -931,12 +837,18 @@ const App: React.FC = () => {
         theme,
         toggleTheme,
     };
-    
+
     return (
         <AppContext.Provider value={appContextValue}>
             <div className="min-h-screen bg-background-secondary font-sans">
                 <Header onToggleChat={() => setIsChatOpen(!isChatOpen)} />
                 <main className="p-4 sm:p-6 lg:p-8">
+                    {error && (
+                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                            <strong className="font-bold">Error:</strong>
+                            <span className="block sm:inline"> {error}</span>
+                        </div>
+                    )}
                     {renderPage()}
                 </main>
                 <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
