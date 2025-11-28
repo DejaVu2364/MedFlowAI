@@ -4,33 +4,55 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UIProvider } from './contexts/UIContext';
 import { PatientProvider } from './contexts/PatientContext';
 import DashboardPage from './pages/DashboardPage';
+import ConsultantViewPage from './pages/ConsultantViewPage';
 import ReceptionPage from './pages/ReceptionPage';
 import TriagePage from './pages/TriagePage';
 import PatientDetailPage from './pages/PatientDetailPage';
 import DischargeSummaryPage from './pages/DischargeSummaryPage';
-import VitalsPage from './pages/VitalsPage';
+import DischargePrintView from './pages/DischargePrintView';
 import LoginPage from './pages/LoginPage';
 import Header from './components/Header';
 import ChatPanel from './components/ChatPanel';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './contexts/ToastContext';
 
+import { DashboardLayout } from './components/layout/DashboardLayout';
+import { CommandPalette } from './components/ui/command-palette';
+import { AIChatDrawer } from './components/ai/AIChatDrawer';
+
 const ProtectedLayout: React.FC = () => {
-    const { currentUser } = useAuth();
+    const { currentUser, isLoading } = useAuth();
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isCmdOpen, setIsCmdOpen] = useState(false);
+
+    useEffect(() => {
+        const down = (e: KeyboardEvent) => {
+            if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                setIsCmdOpen((open) => !open);
+            }
+        };
+        document.addEventListener('keydown', down);
+        return () => document.removeEventListener('keydown', down);
+    }, []);
+
+    if (isLoading) {
+        return <div className="flex items-center justify-center h-screen bg-background"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
+    }
 
     if (!currentUser) {
         return <Navigate to="/login" replace />;
     }
 
     return (
-        <div className="min-h-screen bg-background-secondary font-sans transition-colors duration-200">
-            <Header onToggleChat={() => setIsChatOpen(!isChatOpen)} />
-            <main className="p-4 sm:p-6 lg:p-8">
+        <DashboardLayout>
+            <div className="p-6 max-w-[1600px] mx-auto">
                 <Outlet />
-            </main>
+            </div>
             <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-        </div>
+            <CommandPalette isOpen={isCmdOpen} onClose={() => setIsCmdOpen(false)} />
+            <AIChatDrawer />
+        </DashboardLayout>
     );
 };
 
@@ -41,11 +63,12 @@ const AppRoutes: React.FC = () => {
 
             <Route element={<ProtectedLayout />}>
                 <Route path="/" element={<DashboardPage />} />
+                <Route path="/consultant" element={<ConsultantViewPage />} />
                 <Route path="/reception" element={<ReceptionPage />} />
                 <Route path="/triage" element={<TriagePage />} />
                 <Route path="/patient/:id" element={<PatientDetailPage />} />
-                <Route path="/patient/:id/vitals" element={<VitalsPage />} />
                 <Route path="/discharge/:id" element={<DischargeSummaryPage />} />
+                <Route path="/patient/:id/discharge/print" element={<DischargePrintView />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -79,15 +79,27 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
                                 <ChatBubbleLeftRightIcon className="w-6 h-6" />
                                 <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-brand-green rounded-full border-2 border-white dark:border-gray-900"></span>
                             </button>
-                            <button
-                                onClick={toggleTheme}
-                                className="p-2 rounded-full text-text-secondary hover:bg-background-tertiary transition-colors"
-                            >
-                                {theme === 'light' ? <MoonIcon className="w-6 h-6" /> : <SunIcon className="w-6 h-6" />}
-                            </button>
-                            <div className="hidden sm:flex items-center pl-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-200 to-gray-100 flex items-center justify-center text-text-secondary border border-border-color shadow-sm">
-                                    <UserCircleIcon className="w-5 h-5" />
+                            <div className="flex items-center gap-4">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="hidden md:flex items-center gap-2 text-muted-foreground hover:text-foreground border border-border/50 bg-muted/20"
+                                    onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+                                >
+                                    <span className="text-xs">Search</span>
+                                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                                        <span className="text-xs">⌘</span>K
+                                    </kbd>
+                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                                        {theme === 'dark' ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+                                    </Button>
+                                    <div className="hidden sm:flex items-center pl-2">
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-200 to-gray-100 flex items-center justify-center text-text-secondary border border-border-color shadow-sm">
+                                            <UserCircleIcon className="w-5 h-5" />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

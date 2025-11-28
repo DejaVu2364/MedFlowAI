@@ -1,29 +1,25 @@
 import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
-interface AlertsCardProps {
-    alerts: string[];
-}
-
-const AlertsCard: React.FC<AlertsCardProps> = ({ alerts }) => {
+export const AlertsCard: React.FC<{ alerts: string[] }> = ({ alerts }) => {
     if (alerts.length === 0) return null;
-
     return (
-        <div className="bg-red-50 dark:bg-red-900/20 rounded-xl shadow-sm border border-red-100 dark:border-red-800 p-4 animate-pulse-slow">
-            <div className="flex items-center gap-2 mb-3">
-                <ExclamationTriangleIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
-                <h3 className="text-lg font-semibold text-red-900 dark:text-red-100">Active Alerts</h3>
-            </div>
-            <ul className="space-y-2">
-                {alerts.map((alert, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-red-800 dark:text-red-200 font-medium">
-                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"></span>
-                        <span>{alert}</span>
-                    </li>
-                ))}
-            </ul>
-        </div>
+        <Card className="bg-red-50/50 dark:bg-red-950/10 border-red-100 dark:border-red-900 shadow-sm mt-4">
+            <CardHeader className="pb-2 flex flex-row items-center gap-2">
+                <ExclamationTriangleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                <CardTitle className="text-sm font-semibold text-red-900 dark:text-red-300">Active Alerts</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ul className="space-y-2">
+                    {alerts.map((alert, i) => (
+                        <li key={i} className="text-xs text-red-800 dark:text-red-200 font-medium flex gap-2">
+                            <span className="block w-1.5 h-1.5 rounded-sm bg-red-500 mt-1 shrink-0" />
+                            {alert}
+                        </li>
+                    ))}
+                </ul>
+            </CardContent>
+        </Card>
     );
 };
-
-export default AlertsCard;

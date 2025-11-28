@@ -75,8 +75,12 @@ const PulseOxLiveBox: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                <div className="h-32 flex items-center justify-center text-gray-600 text-sm">
-                    Device not connected
+                <div className="p-4 border border-yellow-500/40 bg-yellow-100/20 rounded-lg text-center">
+                    <p className="text-yellow-600 font-medium text-sm">
+                        Pulse Oximeter disconnected or data unavailable.
+                        <br />
+                        Please check sensor placement.
+                    </p>
                 </div>
             )}
         </div>

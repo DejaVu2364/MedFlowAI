@@ -153,6 +153,13 @@ const DischargeSummaryPage: React.FC = () => {
                     <p className="text-sm text-text-secondary">UHID: {patient.id} • Ward 4 • Bed 12</p>
                 </div>
                 <div className="flex gap-3">
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/patient/${patient.id}`)} className="text-text-secondary hover:text-text-primary">
+                        ← Back to Patient
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => window.open(`/patient/${patient.id}/discharge/print`, '_blank')}>
+                        <DocumentTextIcon className="w-4 h-4 mr-2" />
+                        Export as PDF
+                    </Button>
                     <button onClick={() => navigate(`/patient/${patient.id}`)} className="px-4 py-2 text-sm font-medium text-text-secondary hover:text-text-primary">Cancel</button>
                     <button onClick={handleSave} className="px-4 py-2 text-sm font-medium bg-white dark:bg-gray-800 border border-border-color rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-text-primary">Save Draft</button>
                     <button

@@ -2,182 +2,188 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatient } from '../contexts/PatientContext';
 import { Patient, TriageLevel } from '../types';
-import PatientCard from '../components/PatientCard';
-import { PlusIcon, SearchIcon } from '../components/icons';
+import { PlusIcon, MagnifyingGlassIcon, UserGroupIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
+import { cn } from '../lib/utils';
 
-const StatCard: React.FC<{ label: string; value: number | string; icon?: React.ReactNode; color: string; subtext?: string }> = ({ label, value, icon, color, subtext }) => (
-    <div className="bg-background-primary p-5 rounded-2xl border border-border-color shadow-sm hover:shadow-md transition-shadow flex items-start justify-between relative overflow-hidden group">
-        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${color} opacity-5 -mr-8 -mt-8 rounded-full group-hover:scale-150 transition-transform duration-500`}></div>
-        <div>
-            <p className="text-sm font-semibold text-text-tertiary uppercase tracking-wide">{label}</p>
-            <p className="text-3xl font-bold text-text-primary mt-2 tracking-tight">{value}</p>
-            {subtext && <p className="text-xs text-text-secondary mt-1 font-medium">{subtext}</p>}
-        </div>
-        <div className={`w-12 h-12 rounded-xl ${color} bg-opacity-10 flex items-center justify-center text-opacity-100 shadow-sm`}>
-            {icon}
-        </div>
-    </div>
+const StatCard: React.FC<{ label: string; value: number | string; icon: React.ElementType; trend?: string; trendUp?: boolean; colorClass?: string; bgClass?: string }> = ({ label, value, icon: Icon, trend, trendUp, colorClass, bgClass }) => (
+    <Card className="border-border/50 shadow-sm hover:shadow-md transition-all duration-200">
+        <CardContent className="p-6 flex items-center justify-between">
+            <div>
+                <p className="text-sm font-medium text-muted-foreground">{label}</p>
+                <div className="flex items-baseline gap-2 mt-2">
+                    <h3 className="text-2xl font-bold tracking-tight">{value}</h3>
+                    {trend && (
+                        <span className={cn("text-xs font-medium", trendUp ? "text-green-600" : "text-red-600")}>
+                            {trend}
+                        </span>
+                    )}
+                </div>
+            </div>
+            <div className={cn("p-3 rounded-full", bgClass || "bg-muted/50")}>
+                <Icon className={cn("w-5 h-5", colorClass || "text-muted-foreground")} />
+            </div>
+        </CardContent>
+    </Card>
+);
+
+const PatientList: React.FC<{ title: string; patients: Patient[]; onSelect: (id: string) => void; emptyMsg: string; headerClass?: string }> = ({ title, patients, onSelect, emptyMsg, headerClass }) => (
+    <Card className="border-border/50 shadow-sm h-full flex flex-col hover:border-border/80 transition-colors">
+        <CardHeader className={cn("py-4 px-6 border-b border-border/50", headerClass || "bg-muted/20")}>
+            <div className="flex justify-between items-center">
+                <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+                <Badge variant="secondary" className="font-mono text-xs bg-background/50">{patients.length}</Badge>
+            </div>
+        </CardHeader>
+        <CardContent className="p-0 flex-1 overflow-y-auto max-h-[500px]">
+            {patients.length > 0 ? (
+                <div className="divide-y divide-border/50">
+                    {patients.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => onSelect(p.id)}
+                            className="p-4 hover:bg-muted/30 cursor-pointer transition-colors group"
+                        >
+                            <div className="flex justify-between items-start mb-1">
+                                <h4 className="font-medium text-sm group-hover:text-primary transition-colors">{p.name}</h4>
+                                <Badge variant={p.triage.level === 'Red' ? 'destructive' : p.triage.level === 'Yellow' ? 'secondary' : 'outline'} className="text-[10px] uppercase">
+                                    {p.triage.level}
+                                </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>{p.age}y / {p.gender}</span>
+                                <span>•</span>
+                                <span className="font-mono">{p.id.slice(0, 8)}</span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between">
+                                <span className="text-xs font-medium text-muted-foreground">{p.chiefComplaint}</span>
+                                <span className="text-[10px] text-muted-foreground">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center h-48 text-muted-foreground opacity-60">
+                    <UserGroupIcon className="w-8 h-8 mb-2 opacity-50" />
+                    <span className="text-xs">{emptyMsg}</span>
+                </div>
+            )}
+        </CardContent>
+    </Card>
 );
 
 const DashboardPage: React.FC = () => {
     const { patients, setSelectedPatientId, isLoading } = usePatient();
     const navigate = useNavigate();
-    const [triageSearchTerm, setTriageSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const stats = useMemo(() => {
         const total = patients.length;
-        const critical = patients.filter(p => p.triage.level === 'Red' && p.status !== 'Discharged').length;
+        const critical = patients.filter(p => p.triage.level === 'Red').length;
         const waiting = patients.filter(p => p.status === 'Waiting for Triage' || p.status === 'Waiting for Doctor').length;
         return { total, critical, waiting };
     }, [patients]);
 
-    const patientColumns = useMemo(() => {
-        // Helper to sort by Triage Level: Red > Yellow > Green > None
-        const sortByTriage = (a: Patient, b: Patient) => {
-            const levels: Record<TriageLevel, number> = { 'Red': 3, 'Yellow': 2, 'Green': 1, 'None': 0 };
-            return levels[b.triage.level] - levels[a.triage.level];
-        };
+    const filteredPatients = useMemo(() => {
+        if (!searchTerm) return patients;
+        return patients.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [patients, searchTerm]);
 
-        const waitingForTriage = patients
-            .filter(p => p.status === 'Waiting for Triage')
-            .filter(p => p.name.toLowerCase().includes(triageSearchTerm.toLowerCase()))
-            .sort(sortByTriage);
+    const waitingPatients = filteredPatients.filter(p => p.status === 'Waiting for Triage' || p.status === 'Waiting for Doctor');
+    const activePatients = filteredPatients.filter(p => p.status === 'In Treatment' || p.status === 'Observation');
+    const dischargedPatients = filteredPatients.filter(p => p.status === 'Discharged');
 
-        const waitingForDoctor = patients
-            .filter(p => p.status === 'Waiting for Doctor')
-            .sort(sortByTriage);
-
-        const inTreatment = patients
-            .filter(p => p.status === 'In Treatment')
-            .sort(sortByTriage);
-
-        return [
-            { title: 'Reception / Triage', status: 'Waiting for Triage', patients: waitingForTriage, color: 'border-t-4 border-gray-400' },
-            { title: 'Provider Queue', status: 'Waiting for Doctor', patients: waitingForDoctor, color: 'border-t-4 border-yellow-400' },
-            { title: 'Active Treatment', status: 'In Treatment', patients: inTreatment, color: 'border-t-4 border-brand-blue' },
-        ];
-    }, [patients, triageSearchTerm]);
-
-    const handleTriageClick = (patientId: string) => {
-        setSelectedPatientId(patientId);
-        navigate('/triage');
-    };
-
-    const handlePatientSelect = (patientId: string) => {
-        setSelectedPatientId(patientId);
-        navigate(`/patient/${patientId}`);
+    const handlePatientSelect = (id: string) => {
+        setSelectedPatientId(id);
+        navigate(`/patient/${id}`);
     };
 
     if (isLoading && patients.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96 space-y-4">
-                <div className="w-12 h-12 border-4 border-brand-blue border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-text-tertiary animate-pulse font-medium">Syncing patient data...</p>
-            </div>
-        );
+        return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading dashboard...</div>;
     }
 
     return (
-        <div className="space-y-8 max-w-7xl mx-auto pb-10">
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="space-y-8 max-w-[1600px] mx-auto pb-10 animate-in fade-in duration-500">
+            {/* Header & Actions */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+                    <p className="text-muted-foreground text-sm">Overview of current department status.</p>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <MagnifyingGlassIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search patients..."
+                            className="pl-9 bg-background"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <Button onClick={() => navigate('/reception')}>
+                        <PlusIcon className="w-4 h-4 mr-2" />
+                        Check In
+                    </Button>
+                </div>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
                     label="Total Patients"
                     value={stats.total}
-                    icon={<span className="text-brand-blue text-2xl">👥</span>}
-                    color="bg-brand-blue text-brand-blue"
-                    subtext="Currently checked in"
+                    icon={UserGroupIcon}
+                    trend="+12% from yesterday"
+                    trendUp={true}
+                    colorClass="text-blue-600"
+                    bgClass="bg-blue-50 dark:bg-blue-900/20"
                 />
                 <StatCard
                     label="Critical Attention"
                     value={stats.critical}
-                    icon={<span className="text-triage-red text-2xl">⚡</span>}
-                    color="bg-triage-red text-triage-red"
-                    subtext="Requires immediate action"
+                    icon={ExclamationTriangleIcon}
+                    trend="Requires immediate action"
+                    trendUp={false}
+                    colorClass="text-red-600"
+                    bgClass="bg-red-50 dark:bg-red-900/20"
                 />
                 <StatCard
                     label="Waiting Room"
                     value={stats.waiting}
-                    icon={<span className="text-yellow-600 text-2xl">⏳</span>}
-                    color="bg-yellow-500 text-yellow-600"
-                    subtext="Avg wait: 12m"
+                    icon={ClockIcon}
+                    trend="Avg wait: 14m"
+                    trendUp={true}
+                    colorClass="text-amber-600"
+                    bgClass="bg-amber-50 dark:bg-amber-900/20"
                 />
-                <button
-                    onClick={() => navigate('/reception')}
-                    className="flex flex-col items-center justify-center p-4 bg-brand-blue text-white rounded-2xl shadow-lg shadow-brand-blue/30 hover:bg-brand-blue-dark hover:scale-[1.02] active:scale-95 transition-all group border border-brand-blue-dark"
-                >
-                    <div className="bg-white/20 p-2 rounded-full mb-1 group-hover:bg-white/30 transition-colors">
-                        <PlusIcon className="w-6 h-6" />
-                    </div>
-                    <span className="font-bold text-sm">Check-in Patient</span>
-                </button>
-
-                {/* Seed Database Button (Debug/Admin) */}
-                <button
-                    onClick={async () => {
-                        if (confirm("Are you sure you want to seed the database? This will add mock patients.")) {
-                            try {
-                                const { seedDatabase } = await import('../services/firebase');
-                                const count = await seedDatabase();
-                                alert(`Successfully seeded ${count} patients!`);
-                                window.location.reload();
-                            } catch (e: any) {
-                                alert(`Seeding failed: ${e.message}`);
-                            }
-                        }
-                    }}
-                    className="flex flex-col items-center justify-center p-4 bg-background-secondary text-text-primary rounded-2xl shadow-sm hover:bg-background-tertiary hover:scale-[1.02] active:scale-95 transition-all group border border-border-color"
-                >
-                    <div className="bg-background-tertiary p-2 rounded-full mb-1 group-hover:bg-background-primary transition-colors">
-                        <span className="text-xl">🎲</span>
-                    </div>
-                    <span className="font-bold text-sm">Seed Database</span>
-                </button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {patientColumns.map(col => (
-                    <div key={col.title} className="flex flex-col h-full">
-                        <div className={`bg-background-primary rounded-t-2xl p-4 border-x border-t border-border-color ${col.color} shadow-sm z-10 relative`}>
-                            <div className="flex justify-between items-center mb-2">
-                                <h3 className="font-bold text-lg text-text-primary tracking-tight">{col.title}</h3>
-                                <span className="bg-background-secondary text-text-secondary px-2.5 py-0.5 rounded-full text-xs font-bold border border-border-color">
-                                    {col.patients.length}
-                                </span>
-                            </div>
-
-                            {col.status === 'Waiting for Triage' && (
-                                <div className="relative mt-3">
-                                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-text-tertiary">
-                                        <SearchIcon className="w-4 h-4" />
-                                    </span>
-                                    <input
-                                        type="text"
-                                        placeholder="Filter by name..."
-                                        value={triageSearchTerm}
-                                        onChange={(e) => setTriageSearchTerm(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2 text-sm border border-border-color rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-blue/50 bg-background-secondary/50 text-input-text transition-all placeholder-text-tertiary"
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex-1 bg-background-tertiary/50 dark:bg-background-secondary/20 p-4 rounded-b-2xl border-x border-b border-border-color min-h-[500px] overflow-y-auto">
-                            <div className="space-y-4">
-                                {col.patients.length > 0 ? (
-                                    col.patients.map(p => <PatientCard key={p.id} patient={p} onTriageClick={handleTriageClick} onClick={handlePatientSelect} />)
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-48 text-text-tertiary opacity-60">
-                                        <div className="w-16 h-16 bg-border-color/50 rounded-full mb-3 flex items-center justify-center">
-                                            <span className="text-2xl">✓</span>
-                                        </div>
-                                        <span className="text-sm font-medium">No patients in queue</span>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ))}
+            {/* Patient Lists Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+                <PatientList
+                    title="Waiting Room"
+                    patients={waitingPatients}
+                    onSelect={handlePatientSelect}
+                    emptyMsg="No patients waiting"
+                    headerClass="bg-amber-50/50 dark:bg-amber-900/10"
+                />
+                <PatientList
+                    title="Active Treatment"
+                    patients={activePatients}
+                    onSelect={handlePatientSelect}
+                    emptyMsg="No active patients"
+                    headerClass="bg-blue-50/50 dark:bg-blue-900/10"
+                />
+                <PatientList
+                    title="Discharged / Completed"
+                    patients={dischargedPatients}
+                    onSelect={handlePatientSelect}
+                    emptyMsg="No recent discharges"
+                    headerClass="bg-green-50/50 dark:bg-green-900/10"
+                />
             </div>
         </div>
     );

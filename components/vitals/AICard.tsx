@@ -1,31 +1,24 @@
 import React from 'react';
-import { SparklesIcon } from '@heroicons/react/24/solid';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { SparklesIcon } from '@heroicons/react/24/outline';
 
-interface AICardProps {
-    insights: string[];
-}
-
-const AICard: React.FC<AICardProps> = ({ insights }) => {
+export const AICard: React.FC<{ insights: string[] }> = ({ insights }) => {
     return (
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl shadow-sm border border-blue-100 dark:border-blue-800 p-4">
-            <div className="flex items-center gap-2 mb-3">
-                <SparklesIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                <h3 className="text-lg font-semibold text-blue-900 dark:text-blue-100">AI Insights</h3>
-            </div>
-            <ul className="space-y-2">
-                {insights.length > 0 ? (
-                    insights.map((insight, index) => (
-                        <li key={index} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-200">
-                            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"></span>
-                            <span>{insight}</span>
+        <Card className="bg-indigo-50/50 dark:bg-indigo-950/10 border-indigo-100 dark:border-indigo-900 shadow-sm">
+            <CardHeader className="pb-2 flex flex-row items-center gap-2">
+                <SparklesIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <CardTitle className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">AI Insights</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <ul className="space-y-2">
+                    {insights.map((insight, i) => (
+                        <li key={i} className="text-xs text-indigo-800 dark:text-indigo-200 leading-relaxed flex gap-2">
+                            <span className="block w-1 h-1 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+                            {insight}
                         </li>
-                    ))
-                ) : (
-                    <li className="text-sm text-blue-800 dark:text-blue-200 italic">Analyzing vitals patterns...</li>
-                )}
-            </ul>
-        </div>
+                    ))}
+                </ul>
+            </CardContent>
+        </Card>
     );
 };
-
-export default AICard;
