@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUI } from '../contexts/UIContext';
-import { HomeIcon, UserPlusIcon, ClipboardDocumentListIcon, ChatBubbleLeftRightIcon, SunIcon, MoonIcon, UserCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { HomeIcon, UserPlusIcon, ClipboardDocumentListIcon, ChatBubbleLeftRightIcon, SunIcon, MoonIcon, UserCircleIcon, XMarkIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { getIsFirebaseInitialized } from '../services/firebase';
+import { Button } from './ui/button';
+import { FirebaseStatus } from './common/FirebaseStatus';
 
 interface HeaderProps {
     onToggleChat?: () => void;
@@ -16,12 +18,23 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const isCloudConnected = getIsFirebaseInitialized();
     const [showSetupInfo, setShowSetupInfo] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
 
     const navigation = [
         { name: 'Dashboard', path: '/', icon: <HomeIcon />, testId: 'nav-dashboard' },
         { name: 'Reception', path: '/reception', icon: <UserPlusIcon />, testId: 'nav-reception' },
         { name: 'Triage', path: '/triage', icon: <ClipboardDocumentListIcon />, testId: 'nav-triage' },
+        { name: 'Consultant', path: '/consultant', icon: <UsersIcon />, testId: 'nav-consultant' },
     ];
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate('/login');
+        } catch (error) {
+            console.error("Logout failed", error);
+        }
+    };
 
     if (!currentUser) {
         return null;
@@ -29,57 +42,50 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
 
     return (
         <>
-            <header className="sticky top-0 z-40 w-full glass border-b border-border-color transition-all duration-300 shadow-sm">
+            <header className="sticky top-0 z-40 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border transition-all duration-300">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center h-16">
                         <div className="flex items-center space-x-8">
                             <Link to="/" className="flex items-center gap-2 cursor-pointer group">
-                                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-blue to-brand-blue-dark flex items-center justify-center text-white shadow-lg shadow-brand-blue/30 group-hover:scale-105 transition-transform duration-200">
+                                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-sm group-hover:scale-105 transition-transform duration-200">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                     </svg>
                                 </div>
-                                <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-brand-blue-dark to-brand-blue tracking-tight">
-                                    MedFlow<span className="font-light text-text-tertiary">AI</span>
+                                <h1 className="text-lg font-bold tracking-tight text-foreground">
+                                    MedFlow<span className="font-normal text-muted-foreground">AI</span>
                                 </h1>
                             </Link>
-                            <nav className="hidden md:flex space-x-1 bg-background-tertiary/50 p-1 rounded-full border border-border-color">
+                            <nav className="hidden md:flex space-x-1">
                                 {navigation.map(item => (
                                     <NavLink
                                         key={item.name}
                                         to={item.path}
                                         data-testid={item.testId}
-                                        className={({ isActive }) => `flex items-center px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${isActive
-                                            ? 'bg-white dark:bg-gray-700 text-brand-blue-dark shadow-sm ring-1 ring-black/5'
-                                            : 'text-text-secondary hover:text-text-primary'
+                                        className={({ isActive }) => `flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
+                                            ? 'text-foreground bg-secondary'
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                                             }`}
                                     >
                                         {React.cloneElement(item.icon as any, { className: "w-4 h-4 mr-2" })}
-                                        <span>{item.name}</span>
+                                        {item.name}
                                     </NavLink>
                                 ))}
                             </nav>
                         </div>
-                        <div className="flex items-center space-x-3">
-                            {!isCloudConnected && (
-                                <button
-                                    onClick={() => setShowSetupInfo(true)}
-                                    className="hidden sm:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 animate-pulse"></span>
-                                    Demo Mode
-                                </button>
-                            )}
-                            <div className="h-6 w-px bg-border-color mx-2 hidden sm:block"></div>
+
+                        <div className="flex items-center gap-4">
+                            {/* Firebase Status */}
+                            <FirebaseStatus online={isCloudConnected} />
+
                             <button
                                 onClick={onToggleChat}
-                                className="p-2 rounded-full text-text-secondary hover:bg-brand-blue/10 hover:text-brand-blue transition-colors relative"
-                                aria-label="Toggle AI Chat"
+                                className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
                             >
-                                <ChatBubbleLeftRightIcon className="w-6 h-6" />
-                                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-brand-green rounded-full border-2 border-white dark:border-gray-900"></span>
+                                <ChatBubbleLeftRightIcon className="w-5 h-5" />
+                                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-500 rounded-full border-2 border-background"></span>
                             </button>
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -91,14 +97,40 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
                                         <span className="text-xs">⌘</span>K
                                     </kbd>
                                 </Button>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                                <div className="flex items-center gap-1">
+                                    <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground hover:text-foreground">
                                         {theme === 'dark' ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
                                     </Button>
-                                    <div className="hidden sm:flex items-center pl-2">
-                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-200 to-gray-100 flex items-center justify-center text-text-secondary border border-border-color shadow-sm">
+
+                                    {/* Profile Dropdown */}
+                                    <div className="relative ml-2">
+                                        <button
+                                            onClick={() => setIsProfileOpen(!isProfileOpen)}
+                                            className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground border border-border shadow-sm hover:ring-2 hover:ring-primary/20 transition-all"
+                                        >
                                             <UserCircleIcon className="w-5 h-5" />
-                                        </div>
+                                        </button>
+
+                                        {isProfileOpen && (
+                                            <>
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setIsProfileOpen(false)}
+                                                />
+                                                <div className="absolute right-0 mt-2 w-48 bg-card rounded-md shadow-lg py-1 ring-1 ring-black ring-opacity-5 z-50 border border-border">
+                                                    <div className="px-4 py-2 border-b border-border">
+                                                        <p className="text-sm font-medium text-foreground truncate">{currentUser.email}</p>
+                                                        <p className="text-xs text-muted-foreground">Doctor</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={handleLogout}
+                                                        className="block w-full text-left px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                                                    >
+                                                        Sign out
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -106,15 +138,15 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
                     </div>
                 </div>
                 {/* Mobile Navigation */}
-                <nav className="md:hidden glass border-t border-border-color fixed bottom-0 left-0 w-full z-50 pb-safe">
+                <nav className="md:hidden bg-background border-t border-border fixed bottom-0 left-0 w-full z-50 pb-safe">
                     <div className="flex justify-around py-3">
                         {navigation.map(item => (
                             <NavLink
                                 key={item.name}
                                 to={item.path}
                                 className={({ isActive }) => `flex flex-col items-center justify-center w-full py-1 text-xs font-medium transition-colors ${isActive
-                                    ? 'text-brand-blue'
-                                    : 'text-text-tertiary hover:text-text-primary'
+                                    ? 'text-primary'
+                                    : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
                                 {React.cloneElement(item.icon as any, { className: "w-6 h-6" })}
@@ -127,24 +159,24 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
 
             {/* Setup Instructions Modal */}
             {showSetupInfo && (
-                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-background-primary p-6 rounded-2xl shadow-2xl max-w-lg w-full relative border border-border-color animate-fade-in-up">
+                <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-card p-6 rounded-xl shadow-lg max-w-lg w-full relative border border-border animate-in fade-in zoom-in-95 duration-200">
                         <button
                             onClick={() => setShowSetupInfo(false)}
-                            className="absolute top-4 right-4 text-text-tertiary hover:text-text-primary transition-colors"
+                            className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors"
                         >
-                            <XMarkIcon className="w-6 h-6" />
+                            <XMarkIcon className="w-5 h-5" />
                         </button>
-                        <h3 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
+                        <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
                             <span className="text-2xl">☁️</span> Enable Cloud Persistence
                         </h3>
-                        <div className="space-y-4 text-sm text-text-secondary">
-                            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg border border-red-100 dark:border-red-800/50">
+                        <div className="space-y-4 text-sm text-muted-foreground">
+                            <div className="p-4 bg-destructive/10 text-destructive rounded-lg border border-destructive/20">
                                 <strong>Important:</strong> Connect your own Firebase project to persist data across reloads.
                             </div>
-                            <ol className="list-decimal pl-5 space-y-3 marker:text-brand-blue">
+                            <ol className="list-decimal pl-5 space-y-3 marker:text-primary">
                                 <li>
-                                    Go to <a href="https://console.firebase.google.com/" target="_blank" className="text-brand-blue hover:underline font-medium">Firebase Console</a>.
+                                    Go to <a href="https://console.firebase.google.com/" target="_blank" className="text-primary hover:underline font-medium">Firebase Console</a>.
                                 </li>
                                 <li>Create a project and add a Web App.</li>
                                 <li>Copy the <code>firebaseConfig</code> object.</li>
@@ -152,12 +184,11 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
                             </ol>
                         </div>
                         <div className="mt-8 flex justify-end">
-                            <button
+                            <Button
                                 onClick={() => setShowSetupInfo(false)}
-                                className="px-5 py-2.5 bg-brand-blue text-white rounded-lg hover:bg-brand-blue-dark transition-colors shadow-lg shadow-brand-blue/20"
                             >
                                 Got it
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>

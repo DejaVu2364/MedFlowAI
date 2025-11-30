@@ -9,19 +9,7 @@ interface PatientCardProps {
     onClick?: (patientId: string) => void;
 }
 
-const TriageBadge: React.FC<{ level: TriageLevel }> = React.memo(({ level }) => {
-    const levelStyles: Record<TriageLevel, string> = {
-        Red: 'bg-red-50 text-red-700 ring-red-600/20 dark:bg-red-900/30 dark:text-red-400',
-        Yellow: 'bg-yellow-50 text-yellow-700 ring-yellow-600/20 dark:bg-yellow-900/30 dark:text-yellow-400',
-        Green: 'bg-green-50 text-green-700 ring-green-600/20 dark:bg-green-900/30 dark:text-green-400',
-        None: 'bg-gray-50 text-gray-600 ring-gray-500/10 dark:bg-gray-800 dark:text-gray-400',
-    };
-    return (
-        <span className={`px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-full ring-1 ring-inset ${levelStyles[level]}`}>
-            {level}
-        </span>
-    );
-});
+import { TriageBadge } from './common/TriageBadge';
 
 const PatientCard: React.FC<PatientCardProps> = ({ patient, onTriageClick, onClick }) => {
     const { currentUser } = useAuth();
@@ -60,8 +48,8 @@ const PatientCard: React.FC<PatientCardProps> = ({ patient, onTriageClick, onCli
         >
             {/* Status indicator bar */}
             <div className={`absolute top-0 left-0 w-1 h-full ${patient.triage.level === 'Red' ? 'bg-triage-red' :
-                    patient.triage.level === 'Yellow' ? 'bg-triage-yellow' :
-                        patient.triage.level === 'Green' ? 'bg-triage-green' : 'bg-transparent'
+                patient.triage.level === 'Yellow' ? 'bg-triage-yellow' :
+                    patient.triage.level === 'Green' ? 'bg-triage-green' : 'bg-transparent'
                 }`}></div>
 
             <div className="p-5 pl-6">
@@ -78,7 +66,7 @@ const PatientCard: React.FC<PatientCardProps> = ({ patient, onTriageClick, onCli
                 </div>
 
                 <p className="text-sm text-text-secondary line-clamp-2 mb-4 leading-relaxed">
-                    {patient.complaint}
+                    {patient.chiefComplaints?.[0]?.complaint || 'No complaints'}
                 </p>
 
                 {/* Mini Stats Grid for Scannability */}

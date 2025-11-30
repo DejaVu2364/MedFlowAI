@@ -18,6 +18,11 @@ export const AICard: React.FC<{ insights: string[] }> = ({ insights }) => {
                         </li>
                     ))}
                 </ul>
+                <div className="mt-3 pt-2 border-t border-indigo-200/50 dark:border-indigo-800/50">
+                    <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70 font-medium flex items-center gap-1">
+                        <span className="uppercase tracking-wider">Safety:</span> Verify clinically before action.
+                    </p>
+                </div>
             </CardContent>
         </Card>
     );

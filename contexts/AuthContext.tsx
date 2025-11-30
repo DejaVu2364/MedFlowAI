@@ -40,46 +40,67 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
+    console.log("DEBUG: AuthProvider render, user:", currentUser?.email);
+
+    // Helper to map Firebase user to App user
+    const mapFirebaseUser = (user: any): User => {
+        const role = user.email?.includes('admin') ? 'Admin' : user.email?.includes('intern') ? 'Intern' : 'Doctor';
+        return {
+            id: user.uid,
+            name: user.displayName || user.email?.split('@')[0] || 'User',
+            email: user.email || '',
+            role: role as Role
+        };
+    };
+
     useEffect(() => {
+        // Safety timeout to prevent infinite loading
+        const safetyTimeout = setTimeout(() => {
+            if (isLoading) {
+                console.warn("DEBUG: Auth initialization timed out");
+                setIsLoading(false);
+                setError("Connection timed out. Running in offline/demo mode.");
+            }
+        }, 5000);
+
         const auth = getAuthInstance();
         if (getIsFirebaseInitialized() && auth) {
             const unsubscribe = onAuthStateChanged(auth, (user) => {
+                clearTimeout(safetyTimeout);
                 if (user) {
-                    // Map Firebase User to App User
-                    // In a real app, you'd fetch the user role/profile from Firestore here
-                    // For now, we'll default to Doctor role if not found, or map based on email
-                    const role = user.email?.includes('admin') ? 'Admin' : user.email?.includes('intern') ? 'Intern' : 'Doctor';
-                    setCurrentUser({
-                        id: user.uid,
-                        name: user.displayName || user.email?.split('@')[0] || 'User',
-                        email: user.email || '',
-                        role: role as Role
-                    });
+                    setCurrentUser(mapFirebaseUser(user));
                 } else {
                     setCurrentUser(null);
                 }
                 setIsLoading(false);
             });
-            return () => unsubscribe();
+            return () => {
+                unsubscribe();
+                clearTimeout(safetyTimeout);
+            };
         } else {
             // Fallback to local storage for demo mode
             const storedUser = localStorage.getItem('medflow_user');
             if (storedUser) {
                 setCurrentUser(JSON.parse(storedUser));
             }
+            clearTimeout(safetyTimeout);
             setIsLoading(false);
         }
     }, []);
 
     const login = async (email: string, password: string) => {
+        console.log("DEBUG: login called with", email);
         setIsLoading(true);
         setError(null);
 
         if (getIsFirebaseInitialized()) {
             const auth = getAuthInstance();
             try {
-                await signInWithEmailAndPassword(auth, email, password);
-                // State update handled by onAuthStateChanged
+                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                // Explicitly update state to avoid race conditions with onAuthStateChanged
+                setCurrentUser(mapFirebaseUser(userCredential.user));
+                setIsLoading(false);
             } catch (err: any) {
                 console.error("Login failed", err);
                 setError(err.message || 'Failed to login');
@@ -106,7 +127,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const auth = getAuthInstance();
             try {
                 const { createUserWithEmailAndPassword } = await import('firebase/auth');
-                await createUserWithEmailAndPassword(auth, email, password);
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                // Explicitly update state to avoid race conditions
+                setCurrentUser(mapFirebaseUser(userCredential.user));
+                setIsLoading(false);
             } catch (err: any) {
                 console.error("Signup failed", err);
                 setError(err.message || 'Failed to create account');
@@ -123,6 +147,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const auth = getAuthInstance();
             try {
                 await signOut(auth);
+                // Explicitly clear state
+                setCurrentUser(null);
             } catch (e) { console.error(e); }
         } else {
             setCurrentUser(null);

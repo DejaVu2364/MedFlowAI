@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { MicroSparkline } from './MicroSparkline';
-import { RiskBadge } from './RiskBadge';
+import { TriageBadge } from '../common/TriageBadge';
 import { SparklesIcon, UserIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import { cn } from '../../lib/utils';
 
@@ -49,12 +49,22 @@ export const PatientOverviewCard: React.FC<PatientOverviewCardProps> = ({ patien
                         <div>
                             <CardTitle className="text-base font-bold leading-none flex items-center gap-2">
                                 {patient.name}
-                                <RiskBadge riskLevel={riskLevel} />
+                                <TriageBadge level={patient.triage.level} />
                             </CardTitle>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1.5">
                                 <span className="flex items-center gap-1"><UserIcon className="w-3 h-3" /> {patient.age}y / {patient.gender}</span>
                                 <Separator orientation="vertical" className="h-3" />
                                 <span className="flex items-center gap-1"><MapPinIcon className="w-3 h-3" /> Ward A • Bed {patient.id.slice(-2)}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 mt-2">
+                                {patient.chiefComplaints?.slice(0, 3).map((c, i) => (
+                                    <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal bg-muted/50 text-muted-foreground border-border/50">
+                                        {c.complaint}
+                                    </Badge>
+                                ))}
+                                {(patient.chiefComplaints?.length || 0) > 3 && (
+                                    <span className="text-[10px] text-muted-foreground">+{patient.chiefComplaints!.length - 3} more</span>
+                                )}
                             </div>
                         </div>
                     </div>

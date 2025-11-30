@@ -1,7 +1,7 @@
 import React, { createContext, useContext, ReactNode, useState } from 'react';
 import { usePatientData } from '../hooks/usePatientData';
 import { useAuth } from './AuthContext';
-import { Patient, AuditEvent, Vitals, PatientStatus, SOAPNote, ClinicalFileSections, Order, OrderCategory, DischargeSummary, Round, HistorySectionData, AISuggestionHistory, ChatMessage, Checklist } from '../types';
+import { Patient, AuditEvent, Vitals, PatientStatus, SOAPNote, ClinicalFileSections, Order, OrderCategory, DischargeSummary, Round, HistorySectionData, AISuggestionHistory, ChatMessage, Checklist, ChiefComplaint } from '../types';
 
 // Define the shape of the context based on what usePatientData returns
 type UsePatientDataReturn = ReturnType<typeof usePatientData>;
@@ -13,6 +13,8 @@ interface PatientContextType extends UsePatientDataReturn {
     sendChatMessage: (message: string, patientContextId?: string | null) => Promise<void>;
     addChecklistToPatient: (patientId: string, title: string, items: string[]) => Promise<void>;
     toggleChecklistItem: (patientId: string, checklistId: string, itemIndex: number) => void;
+    generateClinicalFileFromVoice: (patientId: string, transcript: string) => Promise<void>;
+    updatePatientComplaint: (patientId: string, newComplaints: ChiefComplaint[]) => void;
 }
 
 const PatientContext = createContext<PatientContextType | null>(null);
@@ -74,7 +76,7 @@ export const PatientProvider: React.FC<{ children: ReactNode }> = ({ children })
                 if (patient) {
                     context = `Patient Context:
                         Name: ${patient.name}, Age: ${patient.age}, Gender: ${patient.gender}
-                        Chief Complaint: ${patient.complaint}
+                        Chief Complaints: ${patient.chiefComplaints?.map(c => `${c.complaint} (${c.durationValue} ${c.durationUnit})`).join(', ') || 'None'}
                         Current Status: ${patient.status}
                         Triage Level: ${patient.triage.level}
                         Current Vitals: ${patient.vitals ? `HR: ${patient.vitals.pulse}, BP: ${patient.vitals.bp_sys}/${patient.vitals.bp_dia}, SpO2: ${patient.vitals.spo2}%, Temp: ${patient.vitals.temp_c}°C` : 'Not recorded'}
@@ -104,6 +106,37 @@ export const PatientProvider: React.FC<{ children: ReactNode }> = ({ children })
         }
     };
 
+    const generateClinicalFileFromVoice = async (patientId: string, transcript: string) => {
+        try {
+            const { generateClinicalFileFromTranscript } = await import('../services/geminiService');
+            const sections = await generateClinicalFileFromTranscript(transcript);
+
+            patientData.updateStateAndDb(patientId, p => {
+                const currentFile = p.clinicalFile;
+                // Deep merge logic (simplified for brevity)
+                const newHistory = { ...currentFile.sections.history, ...sections.history };
+                const newGpe = { ...currentFile.sections.gpe, ...sections.gpe };
+                const newSystemic = { ...currentFile.sections.systemic, ...sections.systemic };
+
+                return {
+                    ...p,
+                    clinicalFile: {
+                        ...currentFile,
+                        sections: {
+                            ...currentFile.sections,
+                            history: newHistory,
+                            gpe: newGpe,
+                            systemic: newSystemic
+                        }
+                    }
+                };
+            });
+        } catch (error) {
+            console.error("Error generating clinical file from voice:", error);
+            throw error;
+        }
+    };
+
     return (
         <PatientContext.Provider value={{
             ...patientData,
@@ -112,7 +145,8 @@ export const PatientProvider: React.FC<{ children: ReactNode }> = ({ children })
             chatHistory,
             sendChatMessage,
             addChecklistToPatient,
-            toggleChecklistItem
+            toggleChecklistItem,
+            generateClinicalFileFromVoice
         }}>
             {children}
         </PatientContext.Provider>

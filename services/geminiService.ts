@@ -26,6 +26,17 @@ export const classifyComplaint = async (complaint: string): Promise<{ data: AITr
         return { data: cached, fromCache: true };
     }
 
+    if (import.meta.env.VITE_TEST_MODE === 'true') {
+        return {
+            data: {
+                department: 'General Medicine',
+                suggested_triage: 'Green',
+                confidence: 0.95
+            },
+            fromCache: false
+        };
+    }
+
     try {
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini API Timeout")), 15000));
 
@@ -81,6 +92,19 @@ export const generateSOAPFromTranscript = async (transcript: string): Promise<{ 
         return { data: cached, fromCache: true };
     }
 
+    if (import.meta.env.VITE_TEST_MODE === 'true') {
+        return {
+            data: {
+                transcript,
+                s: 'Test Subjective',
+                o: 'Test Objective',
+                a: 'Test Assessment',
+                p: 'Test Plan'
+            },
+            fromCache: false
+        };
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: proModel, // Use Pro for more complex reasoning
@@ -127,6 +151,16 @@ export const summarizeInternNotes = async (notes: TeamNote[]): Promise<{ data: S
         return { data: cached, fromCache: true };
     }
 
+    if (import.meta.env.VITE_TEST_MODE === 'true') {
+        return {
+            data: {
+                summary: 'Test Summary',
+                escalations: ['Test Escalation']
+            },
+            fromCache: false
+        };
+    }
+
     try {
         const response = await ai.models.generateContent({
             model: proModel,
@@ -161,6 +195,9 @@ export const generateChecklist = async (diagnosis: string): Promise<{ data: stri
     if (cached) {
         return { data: cached, fromCache: true };
     }
+    if (import.meta.env.VITE_TEST_MODE === 'true') {
+        return { data: ['Test Checklist Item 1', 'Test Checklist Item 2'], fromCache: false };
+    }
     try {
         const response = await ai.models.generateContent({
             model: flashModel,
@@ -188,21 +225,63 @@ export const generateChecklist = async (diagnosis: string): Promise<{ data: stri
     }
 };
 
-export const answerWithRAG = async (query: string, context: string): Promise<string> => {
+export const chatWithGemini = async (history: { role: 'user' | 'ai'; content: string }[], context: string): Promise<string> => {
     try {
-        const systemInstruction = `You are a helpful medical AI assistant. Answer the user's query based ONLY on the provided context. If the answer is not in the context, state that clearly. Do not use external knowledge. Context:\n${context || "No patient context provided."}`;
+        const systemInstruction = `You are MedFlow AI, a helpful, warm, and intelligent clinical assistant. 
+        You are chatting with a doctor about a specific patient.
+        
+        CONTEXT:
+        ${context || "No specific patient context provided."}
 
-        const response = await ai.models.generateContent({
+        RULES:
+        1. Be conversational but professional.
+        2. Use the provided patient context to answer questions accurately.
+        3. If you don't know something, ask clarifying questions.
+        4. Always end your response with a newline and "AI-generated — verify clinically."
+        5. Use Markdown for formatting (bolding key findings, bullet points).
+        `;
+
+        const chat = ai.models.generateContent({
             model: proModel,
-            contents: query,
+            contents: history.map(m => ({
+                role: m.role === 'user' ? 'user' : 'model',
+                parts: [{ text: m.content }]
+            })),
             config: {
                 systemInstruction,
             },
         });
+
+        const response = await chat;
         return response.text;
     } catch (error) {
-        console.error("Error with RAG answer:", error);
-        return "Sorry, I couldn't process that request.";
+        console.error("Error in chatWithGemini:", error);
+        return "I'm having trouble connecting to the AI service right now. Please try again.";
+    }
+};
+
+export const answerWithRAG = async (query: string, context: string): Promise<string> => {
+    try {
+        const systemInstruction = `You are MedFlow AI, a clinical assistant. 
+        Answer the user's question based strictly on the provided patient context.
+        
+        CONTEXT:
+        ${context}
+
+        If the answer is not in the context, say "I don't have enough information in the patient record to answer that."
+        `;
+
+        const chat = ai.models.generateContent({
+            model: proModel,
+            contents: [{ role: 'user', parts: [{ text: query }] }],
+            config: { systemInstruction },
+        });
+
+        const response = await chat;
+        return response.text;
+    } catch (error) {
+        console.error("Error in answerWithRAG:", error);
+        return "AI Service Error.";
     }
 };
 
@@ -213,7 +292,7 @@ export const generateOverviewSummary = async (patient: Patient): Promise<Patient
     const context = `
         Generate a concise overview for a clinician.
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}.
-        Chief Complaint: ${patient.complaint}.
+        Chief Complaint: ${patient.chiefComplaints?.map(c => `${c.complaint} (${c.durationValue} ${c.durationUnit})`).join(', ') || 'None'}.
         Current Vitals: ${patient.vitals ? `Pulse: ${patient.vitals.pulse}, BP: ${patient.vitals.bp_sys}/${patient.vitals.bp_dia}, SpO2: ${patient.vitals.spo2}%` : 'Not recorded'}.
         Active Orders: ${patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress').map(o => o.label).join(', ') || 'None'}.
         Latest Round Summary: ${patient.rounds.find(r => r.status === 'signed')?.subjective || 'No rounds yet'}.
@@ -334,7 +413,7 @@ export const suggestOrdersFromClinicalFile = async (sections: ClinicalFileSectio
 export const generateStructuredDischargeSummary = async (patient: Patient): Promise<Omit<DischargeSummary, 'id' | 'patientId' | 'doctorId' | 'status' | 'generatedAt'>> => {
     const context = `
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}
-        Chief Complaint: ${patient.complaint}
+        Chief Complaint: ${patient.chiefComplaints?.map(c => `${c.complaint} (${c.durationValue} ${c.durationUnit})`).join(', ') || 'None'}
         
         History & Exam:
         ${JSON.stringify(patient.clinicalFile.sections)}
@@ -355,9 +434,15 @@ export const generateStructuredDischargeSummary = async (patient: Patient): Prom
     try {
         const response = await ai.models.generateContent({
             model: proModel,
-            contents: `You are generating a formal Discharge Summary for MedFlow Hospital. Use British/Indian English spellings.
+            contents: `You are generating a formal Discharge Summary for MedFlow Hospital in Bangalore, India.
+            CRITICAL INSTRUCTIONS:
+            1. Use strictly Indian English spellings (e.g., 'Haemoglobin', 'Oedema', 'Paracetamol').
+            2. REMOVE all American references. Use 'Casualty' instead of 'ER', 'Paracetamol' instead of 'Tylenol/Acetaminophen'.
+            3. Ensure all generated names or addresses (if any) are Indian.
+            4. Sign off as 'Dr. Harikrishnan S' if a name is required in the text.
+            
             Based on the clinical data, populate the following structured fields. 
-            For 'dischargeMeds', suggest a list of medications the patient should take at home based on their treatment and condition.
+            For 'dischargeMeds', suggest a list of medications available in India.
             For 'finalDiagnosis', suggest the most specific ICD-10 compatible diagnosis string.
             
             \n\nPatient Clinical Data:\n${context}`,
@@ -602,7 +687,7 @@ export const summarizeVitals = async (vitalsHistory: VitalsRecord[]): Promise<{ 
 export const generateHandoverSummary = async (patient: Patient): Promise<string> => {
     const context = `
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}, ID: ${patient.id}
-        Diagnosis/Problem: ${patient.clinicalFile.aiSummary || patient.complaint}
+        Diagnosis/Problem: ${patient.clinicalFile.aiSummary || patient.chiefComplaints?.map(c => c.complaint).join(', ')}
         
         Recent Rounds: ${patient.rounds.slice(0, 2).map(r => r.assessment + ' - ' + r.plan.text).join('; ')}
         Current Vitals: ${JSON.stringify(patient.vitals)}
@@ -728,5 +813,98 @@ export const checkOrderSafety = async (newOrder: Order, patient: Patient): Promi
     } catch (error) {
         console.error("Error checking order safety:", error);
         return { safe: true }; // Fail open to avoid blocking care
+    }
+};
+
+export const generateClinicalFileFromTranscript = async (transcript: string): Promise<Partial<ClinicalFileSections>> => {
+    try {
+        const response = await ai.models.generateContent({
+            model: proModel,
+            contents: `You are an advanced medical scribe AI. Your task is to listen to a doctor-patient conversation (transcript) and extract structured clinical data to populate the patient's Clinical File.
+            
+            Transcript: "${transcript}"
+            
+            Extract the following sections if present:
+            - history: { complaints, hpi, past_medical_history, drug_history, family_history, personal_social_history, allergy_history }
+            - gpe: { general_appearance, build, flags (pallor, icterus, etc.) }
+            - systemic: { cvs, rs, abdomen, cns, msk } (summaries for each)
+            
+            Return a JSON object matching the ClinicalFileSections structure. Omit fields that are not mentioned.
+            For 'complaints', return an array of { symptom, duration }.
+            For 'allergy_history', return an array of { substance, reaction, severity }.
+            For 'flags' in GPE, return a boolean map.
+            `,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        history: {
+                            type: Type.OBJECT,
+                            properties: {
+                                complaints: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            symptom: { type: Type.STRING },
+                                            duration: { type: Type.STRING }
+                                        }
+                                    }
+                                },
+                                hpi: { type: Type.STRING },
+                                past_medical_history: { type: Type.STRING },
+                                drug_history: { type: Type.STRING },
+                                family_history: { type: Type.STRING },
+                                personal_social_history: { type: Type.STRING },
+                                allergy_history: {
+                                    type: Type.ARRAY,
+                                    items: {
+                                        type: Type.OBJECT,
+                                        properties: {
+                                            substance: { type: Type.STRING },
+                                            reaction: { type: Type.STRING },
+                                            severity: { type: Type.STRING }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        gpe: {
+                            type: Type.OBJECT,
+                            properties: {
+                                general_appearance: { type: Type.STRING },
+                                build: { type: Type.STRING },
+                                flags: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        pallor: { type: Type.BOOLEAN },
+                                        icterus: { type: Type.BOOLEAN },
+                                        cyanosis: { type: Type.BOOLEAN },
+                                        clubbing: { type: Type.BOOLEAN },
+                                        lad: { type: Type.BOOLEAN },
+                                        edema: { type: Type.BOOLEAN }
+                                    }
+                                }
+                            }
+                        },
+                        systemic: {
+                            type: Type.OBJECT,
+                            properties: {
+                                cvs: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
+                                rs: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
+                                abdomen: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
+                                cns: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
+                                msk: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text);
+    } catch (error) {
+        console.error("Error generating clinical file from transcript:", error);
+        throw error;
     }
 };

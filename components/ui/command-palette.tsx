@@ -4,10 +4,11 @@ import { usePatient } from '../../contexts/PatientContext';
 import {
     MagnifyingGlassIcon, UserIcon, DocumentTextIcon,
     ClipboardDocumentListIcon, BeakerIcon, ArrowRightOnRectangleIcon,
-    HomeIcon, UsersIcon
+    HomeIcon, UsersIcon, PlusIcon, ChartBarIcon, ClipboardDocumentCheckIcon
 } from '@heroicons/react/24/outline';
 import { cn } from '../../lib/utils';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 interface CommandPaletteProps {
     isOpen: boolean;
@@ -17,14 +18,14 @@ interface CommandPaletteProps {
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose }) => {
     const [query, setQuery] = useState('');
     const navigate = useNavigate();
-    const { patients } = usePatient();
+    const { patients, selectedPatientId } = usePatient();
     const [selectedIndex, setSelectedIndex] = useState(0);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                if (isOpen) onClose(); else onClose();
+                if (isOpen) onClose(); else onClose(); // Toggle logic is in parent, this just closes if open
             }
             if (e.key === 'Escape' && isOpen) {
                 onClose();
@@ -44,18 +45,36 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
     const filteredPatients = useMemo(() => {
         if (!query) return patients.slice(0, 3); // Show recent 3 by default
-        return patients.filter(p =>
-            p.name.toLowerCase().includes(query.toLowerCase()) ||
-            p.id.includes(query)
-        ).slice(0, 5);
+        const searchTerms = query.toLowerCase().split(' ').filter(t => t.length > 0);
+        return patients.filter(p => {
+            const searchString = `${p.name} ${p.id} ${p.age} ${p.gender} ${p.status}`.toLowerCase();
+            return searchTerms.every(term => searchString.includes(term));
+        }).slice(0, 5);
     }, [patients, query]);
 
-    const actions = [
-        { label: 'Go to Dashboard', icon: HomeIcon, action: () => navigate('/') },
-        { label: 'Consultant View', icon: UsersIcon, action: () => navigate('/consultant') },
-        { label: 'Reception / Admit', icon: ClipboardDocumentListIcon, action: () => navigate('/reception') },
-        { label: 'Triage Board', icon: BeakerIcon, action: () => navigate('/triage') },
-    ].filter(a => a.label.toLowerCase().includes(query.toLowerCase()));
+    const actions = useMemo(() => {
+        const baseActions = [
+            { label: 'Go to Dashboard', icon: HomeIcon, action: () => navigate('/'), category: 'Navigation' },
+            { label: 'Consultant View', icon: UsersIcon, action: () => navigate('/consultant'), category: 'Navigation' },
+            { label: 'Reception / Admit', icon: ClipboardDocumentListIcon, action: () => navigate('/reception'), category: 'Navigation' },
+            { label: 'Triage Board', icon: BeakerIcon, action: () => navigate('/triage'), category: 'Navigation' },
+        ];
+
+        if (selectedPatientId) {
+            baseActions.push(
+                { label: 'Open MedView', icon: ChartBarIcon, action: () => navigate(`/patient/${selectedPatientId}/medview`), category: 'Patient Actions' },
+                { label: 'Open Clinical File', icon: DocumentTextIcon, action: () => navigate(`/patient/${selectedPatientId}/clinical`), category: 'Patient Actions' },
+                { label: 'Start Rounds', icon: ClipboardDocumentCheckIcon, action: () => navigate(`/patient/${selectedPatientId}/rounds`), category: 'Patient Actions' },
+                { label: 'Add Vitals', icon: PlusIcon, action: () => navigate(`/patient/${selectedPatientId}/vitals`), category: 'Patient Actions' },
+                { label: 'Add Orders', icon: ClipboardDocumentListIcon, action: () => navigate(`/patient/${selectedPatientId}/orders`), category: 'Patient Actions' },
+                { label: 'Add Clinical Note', icon: DocumentTextIcon, action: () => navigate(`/patient/${selectedPatientId}/clinical`), category: 'Patient Actions' },
+                { label: 'Discharge Summary', icon: ArrowRightOnRectangleIcon, action: () => navigate(`/patient/${selectedPatientId}/discharge`), category: 'Patient Actions' }
+            );
+        }
+
+        if (!query) return baseActions;
+        return baseActions.filter(a => a.label.toLowerCase().includes(query.toLowerCase()));
+    }, [navigate, query, selectedPatientId]);
 
     const allOptions = [
         ...filteredPatients.map(p => ({ type: 'patient', data: p })),
@@ -103,12 +122,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
             <div className="relative w-full max-w-2xl bg-popover rounded-xl shadow-2xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[70vh]">
                 <div className="flex items-center border-b border-border px-4 py-3 gap-3">
                     <MagnifyingGlassIcon className="w-5 h-5 text-muted-foreground" />
-                    <input
-                        className="flex-1 bg-transparent outline-none text-lg placeholder:text-muted-foreground text-foreground"
+                    <Input
+                        className="flex-1 bg-transparent border-none focus-visible:ring-0 text-lg placeholder:text-muted-foreground text-foreground h-10 shadow-none"
                         placeholder="Search patients, actions, or pages..."
                         value={query}
                         onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
                         autoFocus
+                        data-testid="command-palette-input"
                     />
                     <div className="flex gap-2">
                         <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
@@ -151,7 +171,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                                                             <Badge variant="outline" className="text-[10px] h-4 px-1">{p.id.slice(-4)}</Badge>
                                                         </div>
                                                         <div className="text-xs text-muted-foreground">
-                                                            {p.age}y • {p.gender} • Ward A
+                                                            {p.age}y • {p.gender} • {p.status}
                                                         </div>
                                                     </div>
                                                     {isSelected && <ArrowRightOnRectangleIcon className="w-4 h-4 text-muted-foreground" />}
@@ -164,7 +184,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
                             {actions.length > 0 && (
                                 <div>
-                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider">Navigation & Actions</h3>
+                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider">Actions</h3>
                                     <div className="space-y-1">
                                         {actions.map((a, i) => {
                                             const globalIndex = filteredPatients.length + i;
@@ -182,6 +202,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                                                         <a.icon className="w-4 h-4" />
                                                     </div>
                                                     <span className="font-medium">{a.label}</span>
+                                                    {/* @ts-ignore */}
+                                                    {a.category && <span className="ml-auto text-xs text-muted-foreground opacity-50">{a.category}</span>}
                                                 </button>
                                             );
                                         })}

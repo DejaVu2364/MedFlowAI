@@ -1,107 +1,139 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { findUserByEmail } from '../services/api';
+import { Input } from '../components/ui/input';
+import { Button } from '../components/ui/button';
+import { Label } from '../components/ui/label';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../components/ui/card';
+import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 const LoginPage: React.FC = () => {
     const { login, signup } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const from = location.state?.from?.pathname || '/';
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [isLogin, setIsLogin] = useState(true);
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
+        if (!email.trim()) {
+            setError('Email is required.');
+            return;
+        }
+        if (!password.trim()) {
+            setError('Password is required.');
+            return;
+        }
+
+        setIsLoading(true);
+
         try {
             if (isLogin) {
                 await login(email, password);
+                // Only navigate on success
+                navigate(from, { replace: true });
             } else {
                 await signup(email, password);
+                navigate(from, { replace: true });
             }
-            navigate('/');
         } catch (err: any) {
-            setError(err.message || (isLogin ? 'Invalid email or password.' : 'Failed to create account.'));
+            console.error("Login error:", err);
+            let msg = "Failed to sign in.";
+            if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+                msg = "Invalid email or password.";
+            } else if (err.code === 'auth/email-already-in-use') {
+                msg = "Email already in use.";
+            } else if (err.code === 'auth/weak-password') {
+                msg = "Password should be at least 6 characters.";
+            } else if (err.message) {
+                msg = err.message;
+            }
+            setError(msg);
+        } finally {
+            setIsLoading(false);
         }
     };
 
     return (
-        <div className="flex items-center justify-center min-h-screen">
-            <div className="w-full max-w-md p-8 space-y-6 bg-background-primary rounded-xl shadow-lg">
-                <div className="text-center">
-                    <h1 className="text-3xl font-bold text-brand-blue-dark">Welcome to MedFlow AI</h1>
-                    <p className="mt-2 text-text-secondary">{isLogin ? 'Sign in to your account' : 'Create a new account'}</p>
-                </div>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-text-secondary">
-                            Email address
-                        </label>
-                        <div className="mt-1">
-                            <input
+        <div className="flex items-center justify-center min-h-screen bg-background p-4">
+            <Card className="w-full max-w-md shadow-lg border-border/50">
+                <CardHeader className="space-y-1 text-center">
+                    <CardTitle className="text-2xl font-bold text-primary">MedFlow AI</CardTitle>
+                    <CardDescription>
+                        {isLogin ? 'Sign in to your account' : 'Create a new account'}
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
                                 id="email"
-                                name="email"
                                 type="email"
-                                autoComplete="email"
-                                required
+                                placeholder="name@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                disabled={isLoading}
                                 data-testid="login-email-input"
-                                className="appearance-none block w-full px-3 py-2 border border-border-color rounded-md shadow-sm placeholder-text-tertiary focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm bg-background-primary text-input-text"
+                                required
                             />
                         </div>
-                    </div>
-
-                    <div>
-                        <label htmlFor="password" className="block text-sm font-medium text-text-secondary">
-                            Password
-                        </label>
-                        <div className="mt-1">
-                            <input
+                        <div className="space-y-2">
+                            <Label htmlFor="password">Password</Label>
+                            <Input
                                 id="password"
-                                name="password"
                                 type="password"
-                                autoComplete="current-password"
-                                required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                disabled={isLoading}
                                 data-testid="login-password-input"
-                                className="appearance-none block w-full px-3 py-2 border border-border-color rounded-md shadow-sm placeholder-text-tertiary focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm bg-background-primary text-input-text"
+                                required
                             />
                         </div>
-                    </div>
 
-                    {error && <p className="text-sm text-red-600">{error}</p>}
+                        {error && (
+                            <div className="flex items-center gap-2 p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
+                                <ExclamationTriangleIcon className="h-4 w-4" />
+                                <span>{error}</span>
+                            </div>
+                        )}
 
-                    <div className="flex flex-col space-y-3">
-                        <button
+                        <Button
                             type="submit"
+                            className="w-full"
+                            disabled={isLoading}
                             data-testid="login-submit-button"
-                            className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-brand-blue hover:bg-brand-blue-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue"
                         >
-                            {isLogin ? 'Sign in' : 'Create Account'}
-                        </button>
+                            {isLoading ? 'Processing...' : (isLogin ? 'Sign in' : 'Create Account')}
+                        </Button>
+                    </form>
+                </CardContent>
+                <CardFooter className="flex flex-col space-y-4 text-center text-sm text-muted-foreground">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsLogin(!isLogin);
+                            setError('');
+                        }}
+                        className="text-primary hover:underline focus:outline-none"
+                    >
+                        {isLogin ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
+                    </button>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsLogin(!isLogin);
-                                setError('');
-                            }}
-                            className="text-sm text-brand-blue hover:text-brand-blue-dark focus:outline-none"
-                        >
-                            {isLogin ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
-                        </button>
+                    <div className="text-xs pt-4 border-t w-full">
+                        <p className="font-semibold mb-1">Demo Accounts:</p>
+                        <p>doctor@medflow.ai / password123</p>
+                        <p>intern@medflow.ai / password123</p>
                     </div>
-                </form>
-                <div className="text-center text-xs text-text-tertiary">
-                    <p>Demo accounts:</p>
-                    <p>doctor@medflow.ai / password123</p>
-                    <p>intern@medflow.ai / password123</p>
-                </div>
-            </div>
+                </CardFooter>
+            </Card>
         </div>
     );
 };

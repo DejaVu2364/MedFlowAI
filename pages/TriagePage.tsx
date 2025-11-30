@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatient } from '../contexts/PatientContext';
 import { Patient, Vitals } from '../types';
+import { Input } from '../components/ui/input';
+import { MultiComplaintWithDuration } from '../components/common/MultiComplaintWithDuration';
+import { TriageBadge } from '../components/common/TriageBadge';
 
 const TriageForm: React.FC<{ patient: Patient }> = ({ patient }) => {
-    const { updatePatientVitals, isLoading, setSelectedPatientId } = usePatient();
+    const { updatePatientVitals, isLoading, setSelectedPatientId, updatePatientComplaint } = usePatient();
     const navigate = useNavigate();
     const [vitals, setVitals] = useState<Vitals>({
         hr: 0,
@@ -40,12 +43,20 @@ const TriageForm: React.FC<{ patient: Patient }> = ({ patient }) => {
                 &larr; Back to Triage List
             </button>
             <div className="bg-background-primary p-8 rounded-xl shadow-lg">
-                <h2 className="text-2xl font-bold text-text-primary mb-2">Triage & Vitals Assessment</h2>
+                <h2 className="text-2xl font-bold text-text-primary mb-2">Patient Admission Form</h2>
                 <div className="mb-6 p-4 bg-brand-blue-light rounded-lg">
                     <p className="font-bold text-lg text-brand-blue-dark">{patient.name}, {patient.age}</p>
-                    <p className="text-sm text-text-secondary mt-1"><strong>Complaint:</strong> {patient.complaint}</p>
+                    <div className="mt-2">
+                        <label className="text-sm font-semibold text-text-secondary">Chief Complaints:</label>
+                        <MultiComplaintWithDuration
+                            value={patient.chiefComplaints || []}
+                            onChange={(newComplaints) => {
+                                updatePatientComplaint(patient.id, newComplaints);
+                            }}
+                        />
+                    </div>
                     {patient.aiTriage &&
-                        <p className="text-sm text-text-secondary/80 mt-1">
+                        <p className="text-sm text-text-secondary/80 mt-2">
                             <strong>AI Suggestion:</strong> {patient.aiTriage.department} (Triage: {patient.aiTriage.suggested_triage})
                         </p>
                     }
@@ -56,13 +67,13 @@ const TriageForm: React.FC<{ patient: Patient }> = ({ patient }) => {
                         {Object.entries({ hr: 'Heart Rate (bpm)', bpSys: 'BP Systolic (mmHg)', bpDia: 'BP Diastolic (mmHg)', rr: 'Resp. Rate (/min)', spo2: 'SpO2 (%)', temp: 'Temp (°C)' }).map(([key, label]) => (
                             <div key={key}>
                                 <label htmlFor={key} className="block text-sm font-medium text-text-secondary">{label}</label>
-                                <input
+                                <Input
                                     type="number"
                                     name={key}
                                     id={key}
                                     value={vitals[key as keyof Vitals] > 0 ? vitals[key as keyof Vitals] : ''}
                                     onChange={handleChange}
-                                    className="mt-1 block w-full px-3 py-2 border border-border-color rounded-md shadow-sm focus:outline-none focus:ring-brand-blue focus:border-brand-blue sm:text-sm bg-background-primary text-input-text"
+                                    className="mt-1"
                                     required
                                 />
                             </div>
@@ -89,7 +100,7 @@ const TriagePatientList: React.FC = () => {
 
     return (
         <div className="max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold text-text-primary mb-6">Triage Queue</h2>
+            <h2 className="text-2xl font-bold text-text-primary mb-6">Patient Triage & Admission</h2>
             <div className="bg-background-primary rounded-xl shadow-lg overflow-hidden">
                 {waitingPatients.length > 0 ? (
                     <ul className="divide-y divide-border-color">
@@ -101,13 +112,26 @@ const TriagePatientList: React.FC = () => {
                                         <p className="text-sm text-text-tertiary">{patient.age}, {patient.gender}</p>
                                     </div>
                                     {patient.aiTriage && (
-                                        <div className="text-right">
+                                        <div className="text-right flex flex-col items-end gap-1">
                                             <p className="text-xs font-semibold text-text-tertiary uppercase">AI Suggestion</p>
-                                            <p className="text-sm font-medium text-brand-blue-dark">{patient.aiTriage.department}</p>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-medium text-brand-blue-dark">{patient.aiTriage.department}</span>
+                                                <TriageBadge level={patient.aiTriage.suggested_triage} />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
-                                <p className="text-sm text-text-secondary mt-2">{patient.complaint}</p>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                    {patient.chiefComplaints && patient.chiefComplaints.length > 0 ? (
+                                        patient.chiefComplaints.map((c, idx) => (
+                                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                {c.complaint} ({c.durationValue} {c.durationUnit})
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="text-sm text-text-secondary">No complaints recorded</span>
+                                    )}
+                                </div>
                             </li>
                         ))}
                     </ul>
@@ -115,7 +139,7 @@ const TriagePatientList: React.FC = () => {
                     <p className="p-8 text-center text-text-tertiary">No patients are waiting for triage.</p>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

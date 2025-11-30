@@ -1,29 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { UIProvider } from './contexts/UIContext';
 import { PatientProvider } from './contexts/PatientContext';
-import DashboardPage from './pages/DashboardPage';
-import ConsultantViewPage from './pages/ConsultantViewPage';
-import ReceptionPage from './pages/ReceptionPage';
-import TriagePage from './pages/TriagePage';
-import PatientDetailPage from './pages/PatientDetailPage';
-import DischargeSummaryPage from './pages/DischargeSummaryPage';
-import DischargePrintView from './pages/DischargePrintView';
-import LoginPage from './pages/LoginPage';
-import Header from './components/Header';
-import ChatPanel from './components/ChatPanel';
-import ErrorBoundary from './components/ErrorBoundary';
 import { ToastProvider } from './contexts/ToastContext';
-
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { CommandPalette } from './components/ui/command-palette';
 import { AIChatDrawer } from './components/ai/AIChatDrawer';
+
+// Helper to handle chunk load errors (e.g., after deployment)
+const lazyLoad = (importFunc: () => Promise<any>) => {
+    return React.lazy(() => {
+        return importFunc().catch(error => {
+            console.error("Chunk load failed", error);
+            // Check if we already tried to reload to avoid infinite loop
+            const hasReloaded = sessionStorage.getItem('chunk_reload');
+            if (!hasReloaded) {
+                sessionStorage.setItem('chunk_reload', 'true');
+                window.location.reload();
+            }
+            throw error;
+        });
+    });
+};
+
+// Lazy load pages for performance
+const DashboardPage = lazyLoad(() => import('./pages/DashboardPage'));
+const ConsultantViewPage = lazyLoad(() => import('./pages/ConsultantViewPage'));
+const ReceptionPage = lazyLoad(() => import('./pages/ReceptionPage'));
+const TriagePage = lazyLoad(() => import('./pages/TriagePage'));
+const PatientDetailPage = lazyLoad(() => import('./pages/PatientDetailPage'));
+const DischargeSummaryPage = React.lazy(() => import('./pages/DischargeSummaryPage'));
+const DischargePrintView = lazyLoad(() => import('./pages/DischargePrintView'));
+const LoginPage = lazyLoad(() => import('./pages/LoginPage'));
+const NotFoundPage = lazyLoad(() => import('./pages/NotFoundPage'));
+
+import Header from './components/Header';
+import ChatPanel from './components/ChatPanel';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const ProtectedLayout: React.FC = () => {
     const { currentUser, isLoading } = useAuth();
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isCmdOpen, setIsCmdOpen] = useState(false);
+    const location = useLocation();
 
     useEffect(() => {
         const down = (e: KeyboardEvent) => {
@@ -41,7 +61,7 @@ const ProtectedLayout: React.FC = () => {
     }
 
     if (!currentUser) {
-        return <Navigate to="/login" replace />;
+        return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
     return (
@@ -58,27 +78,54 @@ const ProtectedLayout: React.FC = () => {
 
 const AppRoutes: React.FC = () => {
     return (
-        <Routes>
-            <Route path="/login" element={<LoginPage />} />
+        <React.Suspense fallback={
+            <div className="flex items-center justify-center h-screen bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                    <p className="text-muted-foreground animate-pulse">Loading MedFlow AI...</p>
+                </div>
+            </div>
+        }>
+            <Routes>
+                <Route path="/login" element={<LoginPage />} />
 
-            <Route element={<ProtectedLayout />}>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/consultant" element={<ConsultantViewPage />} />
-                <Route path="/reception" element={<ReceptionPage />} />
-                <Route path="/triage" element={<TriagePage />} />
-                <Route path="/patient/:id" element={<PatientDetailPage />} />
-                <Route path="/discharge/:id" element={<DischargeSummaryPage />} />
-                <Route path="/patient/:id/discharge/print" element={<DischargePrintView />} />
-            </Route>
+                <Route element={<ProtectedLayout />}>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/consultant" element={<ConsultantViewPage />} />
+                    <Route path="/reception" element={<ReceptionPage />} />
+                    <Route path="/triage" element={<TriagePage />} />
+                    <Route path="/patient/:id/discharge" element={<DischargeSummaryPage />} />
+                    <Route path="/patient/:id/discharge/print" element={<DischargePrintView />} />
+                    {/* Updated Patient Detail Route to support tabs */}
+                    <Route path="/patient/:id/:tab?" element={<PatientDetailPage />} />
+                </Route>
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+                <Route path="/404" element={<NotFoundPage />} />
+                <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+        </React.Suspense>
     );
 };
 
 const App: React.FC = () => {
     useEffect(() => {
-        console.log("MedFlow AI v1.0.2 - Vitals Page Added - " + new Date().toISOString());
+        console.log("MedFlow AI v1.0.5 - Auto Seed Added - " + new Date().toISOString());
+
+        const firebaseKey = import.meta.env.VITE_FIREBASE_API_KEY;
+        const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+        console.log("DEBUG: Firebase Key present:", !!firebaseKey);
+        console.log("DEBUG: Gemini Key present:", !!geminiKey);
+
+        if (!firebaseKey || firebaseKey.includes("YOUR_API_KEY")) {
+            console.error("CRITICAL: Firebase API Key is missing or default!");
+        }
+        if (!geminiKey || geminiKey.includes("YOUR_API_KEY")) {
+            console.warn("WARNING: Gemini API Key is missing or default! AI features will fail.");
+        }
+
+        // Clear the reload flag on successful load
+        sessionStorage.removeItem('chunk_reload');
     }, []);
     return (
         <Router>
@@ -89,6 +136,7 @@ const App: React.FC = () => {
                         <AuthProvider>
                             <PatientProvider>
                                 <AppRoutes />
+
                             </PatientProvider>
                         </AuthProvider>
                     </UIProvider>

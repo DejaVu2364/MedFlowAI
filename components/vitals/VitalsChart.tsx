@@ -1,5 +1,5 @@
 import React from 'react';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea } from 'recharts';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceArea } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
@@ -29,7 +29,13 @@ export const VitalsChart: React.FC<VitalsChartProps> = ({ title, data, dataKey, 
             {!isCollapsed && (
                 <CardContent className="p-4 h-[200px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={data}>
+                        <AreaChart data={data}>
+                            <defs>
+                                <linearGradient id={`color${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor={color} stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
                             <XAxis
                                 dataKey="timestamp"
@@ -46,22 +52,24 @@ export const VitalsChart: React.FC<VitalsChartProps> = ({ title, data, dataKey, 
                                 width={30}
                             />
                             <Tooltip
-                                contentStyle={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)', borderRadius: '8px', fontSize: '12px' }}
+                                contentStyle={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                 itemStyle={{ color: 'var(--foreground)' }}
                                 labelStyle={{ color: 'var(--muted-foreground)', marginBottom: '4px' }}
                             />
                             {normalRange && (
                                 <ReferenceArea y1={normalRange[0]} y2={normalRange[1]} fill="var(--primary)" fillOpacity={0.05} />
                             )}
-                            <Line
+                            <Area
                                 type="monotone"
                                 dataKey={dataKey}
                                 stroke={color}
                                 strokeWidth={2}
+                                fillOpacity={1}
+                                fill={`url(#color${dataKey})`}
                                 dot={{ r: 3, fill: color, strokeWidth: 0 }}
                                 activeDot={{ r: 5, strokeWidth: 0 }}
                             />
-                        </LineChart>
+                        </AreaChart>
                     </ResponsiveContainer>
                 </CardContent>
             )}

@@ -22,12 +22,12 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [sidebarOpen, setSidebarOpen] = useState(true);
 
     useEffect(() => {
-        // Check system preference or local storage
+        // Check local storage only, default to light if not set
         const storedTheme = localStorage.getItem('theme') as 'light' | 'dark';
         if (storedTheme) {
             setTheme(storedTheme);
-        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            setTheme('dark');
+        } else {
+            setTheme('light');
         }
     }, []);
 

@@ -9,11 +9,11 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
-import { RiskBadge } from './RiskBadge';
+import { TriageBadge } from '../common/TriageBadge';
 import { AISummaryCard } from './AISummaryCard';
 import { AIChangeCard } from './AIChangeCard';
-import { SparklineGraph } from './SparklineGraph';
 import { ProblemList } from './ProblemList';
+import { KeyTrends } from './KeyTrends';
 import { AITaskList } from './AITaskList';
 import { HandoverCard } from './HandoverCard';
 import { cn } from '../../lib/utils';
@@ -36,7 +36,7 @@ const PatientHeader: React.FC<{ patient: Patient }> = ({ patient }) => {
                     <div>
                         <div className="flex items-center gap-2">
                             <h1 className="text-lg font-bold leading-none tracking-tight">{patient.name}</h1>
-                            <RiskBadge riskLevel={riskLevel} />
+                            <TriageBadge level={patient.triage.level} />
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 font-medium">
                             <span>{patient.age}y / {patient.gender}</span>
@@ -44,6 +44,13 @@ const PatientHeader: React.FC<{ patient: Patient }> = ({ patient }) => {
                             <span className="font-mono">UHID: {patient.id.slice(-6)}</span>
                             <Separator orientation="vertical" className="h-3" />
                             <span>Ward A, Bed 4</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                            {patient.chiefComplaints?.map((c, i) => (
+                                <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0 h-5 font-normal bg-muted/50 text-muted-foreground border-border/50">
+                                    {c.complaint} ({c.durationValue}{c.durationUnit.charAt(0)})
+                                </Badge>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -101,40 +108,7 @@ const TimelineCard: React.FC<{ patient: Patient }> = ({ patient }) => {
     );
 };
 
-const TrendGrid: React.FC<{ patient: Patient }> = ({ patient }) => {
-    // Mock data generation
-    const data = useMemo(() => {
-        return Array.from({ length: 24 }, (_, i) => ({
-            value: 70 + Math.random() * 20,
-            timestamp: `${i}:00`
-        }));
-    }, []);
 
-    // Mock data for different metrics
-    const hrData = data.map(d => ({ ...d, value: 70 + Math.random() * 20 }));
-    const bpData = data.map(d => ({ ...d, value: 120 + Math.random() * 20 }));
-    const spo2Data = data.map(d => ({ ...d, value: 95 + Math.random() * 4 }));
-    const rrData = data.map(d => ({ ...d, value: 16 + Math.random() * 4 }));
-    const tempData = data.map(d => ({ ...d, value: 36.5 + Math.random() * 1 }));
-
-    return (
-        <Card className="shadow-sm hover:shadow-md transition-all duration-200 border-border/50">
-            <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                <ArrowTrendingUpIcon className="w-5 h-5 text-muted-foreground" />
-                <CardTitle className="text-base font-semibold">Key Trends (Last 24h)</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    <SparklineGraph title="Heart Rate" data={hrData} unit="bpm" color="#ef4444" trend="up" />
-                    <SparklineGraph title="BP (Sys)" data={bpData} unit="mmHg" color="#3b82f6" trend="down" />
-                    <SparklineGraph title="SpO2" data={spo2Data} unit="%" color="#3b82f6" trend="stable" />
-                    <SparklineGraph title="Resp Rate" data={rrData} unit="bpm" color="#10b981" trend="stable" />
-                    <SparklineGraph title="Temp" data={tempData} unit="°C" color="#f97316" trend="up" />
-                </div>
-            </CardContent>
-        </Card>
-    );
-};
 
 const MedReviewCard: React.FC<{ patient: Patient }> = ({ patient }) => {
     return (
@@ -178,15 +152,15 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
     const { generatePatientOverview, updateStateAndDb, isLoading } = usePatient();
 
     // Mock Changes Data
-    const changes = [
+    const changes: { category: 'vitals' | 'labs' | 'symptoms' | 'meds'; description: string; trend?: 'up' | 'down' | 'stable'; severity?: 'high' | 'medium' | 'low' }[] = [
         { category: 'vitals', description: 'HR increased 76 -> 92 bpm', trend: 'up', severity: 'medium' },
         { category: 'labs', description: 'CRP elevated (24 -> 62)', trend: 'up', severity: 'high' },
         { category: 'symptoms', description: 'Headache improved, Vomiting resolved', trend: 'stable', severity: 'low' },
         { category: 'meds', description: 'Ondansetron added for nausea', trend: 'stable' }
-    ] as const;
+    ];
 
     // Mock Tasks Data
-    const [tasks, setTasks] = useState([
+    const [tasks, setTasks] = useState<{ id: string; description: string; priority: 'high' | 'medium' | 'low'; completed: boolean }[]>([
         { id: '1', description: 'Review Blood Culture (24h)', priority: 'high', completed: false },
         { id: '2', description: 'Check wound dressing', priority: 'medium', completed: false },
         { id: '3', description: 'Discharge planning', priority: 'low', completed: false },
@@ -198,7 +172,6 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
 
     // Problem List Handlers
     const addProblem = () => {
-        // Logic to add problem (would open a modal or inline input in real app)
         console.log("Add problem clicked");
     };
 
@@ -214,7 +187,7 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
         <div className="min-h-screen bg-background pb-20">
             <PatientHeader patient={patient} />
 
-            <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-10 space-y-8">
+            <div className="max-w-6xl mx-auto p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <AISummaryCard
                     summary={patient.overview?.summary || "Click refresh to generate summary."}
                     onRefresh={() => generatePatientOverview(patient.id)}
@@ -223,12 +196,31 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
 
                 <AIChangeCard changes={changes} />
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 space-y-6">
-                        <TimelineCard patient={patient} />
-                        <TrendGrid patient={patient} />
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 space-y-8">
+                        {patient.timeline.length > 0 ? (
+                            <TimelineCard patient={patient} />
+                        ) : (
+                            <Card className="shadow-sm border-dashed">
+                                <CardContent className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+                                    <ClockIcon className="w-8 h-8 mb-2 opacity-50" />
+                                    <p>No recent timeline events</p>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {patient.vitalsHistory.length > 0 ? (
+                            <KeyTrends patient={patient} />
+                        ) : (
+                            <Card className="shadow-sm border-dashed">
+                                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                    <ArrowTrendingUpIcon className="w-8 h-8 mb-2 opacity-50" />
+                                    <p>No vitals trend data available</p>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                         <ProblemList
                             problems={patient.activeProblems || []}
                             onAdd={addProblem}

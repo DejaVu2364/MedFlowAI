@@ -15,11 +15,16 @@ import {
     Beaker,
     Image as ImageIcon,
     Syringe,
-    Scissors
+    Scissors,
+    AlertCircle,
+    AlertTriangle,
+    CheckCircle
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { TriageBadge } from '../components/common/TriageBadge';
 import { Separator } from '../components/ui/separator';
+import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 
 // External Components
@@ -42,9 +47,7 @@ const PatientHeader: React.FC<{ patient: Patient; onTabChange: (tab: any) => voi
                     <div>
                         <div className="flex items-center gap-3">
                             <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">{patient.name}</h1>
-                            <Badge variant={patient.triage.level === 'Red' ? 'destructive' : patient.triage.level === 'Yellow' ? 'secondary' : 'outline'} className={cn("uppercase text-[10px] tracking-wider font-bold", patient.triage.level === 'Yellow' && "bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-200")}>
-                                {patient.triage.level} Priority
-                            </Badge>
+                            <TriageBadge level={patient.triage.level} className="text-[10px] uppercase tracking-wider font-bold" />
                         </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
                             <span className="font-medium text-foreground">{patient.age}y</span>
@@ -52,6 +55,13 @@ const PatientHeader: React.FC<{ patient: Patient; onTabChange: (tab: any) => voi
                             <span className="font-medium text-foreground">{patient.gender}</span>
                             <span className="text-zinc-300 dark:text-zinc-700">•</span>
                             <span className="font-mono text-xs">MRN: {patient.id.slice(0, 8).toUpperCase()}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {patient.chiefComplaints?.map((c, i) => (
+                                <Badge key={i} variant="secondary" className="text-xs font-normal bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700">
+                                    {c.complaint} <span className="opacity-50 ml-1">({c.durationValue}{c.durationUnit.charAt(0)})</span>
+                                </Badge>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -142,7 +152,9 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
             category: activeCategory,
             label: itemLabel,
             priority: 'routine',
-            instructions: activeCategory === 'medication' ? 'Review dosage before admin' : ''
+            instructions: activeCategory === 'medication' ? 'Review dosage before admin' : '',
+            payload: {},
+            subType: 'generic'
         });
         setSearchTerm('');
     };
@@ -150,11 +162,11 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-250px)]">
             {/* Catalog Sidebar */}
-            <div className="lg:col-span-4 flex flex-col border rounded-xl bg-card overflow-hidden">
-                <div className="p-4 border-b bg-muted/30">
+            <div className="lg:col-span-4 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden">
+                <div className="p-4 border-b border-border/50 dark:border-white/5 bg-muted/30">
                     <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <input
+                        <Input
                             type="text"
                             placeholder={`Search ${activeCategory}...`}
                             value={searchTerm}
@@ -197,8 +209,8 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
             </div>
 
             {/* Active Orders */}
-            <div className="lg:col-span-8 flex flex-col border rounded-xl bg-card overflow-hidden">
-                <div className="p-4 border-b flex justify-between items-center bg-muted/30">
+            <div className="lg:col-span-8 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden">
+                <div className="p-4 border-b border-border/50 dark:border-white/5 flex justify-between items-center bg-muted/30">
                     <h3 className="font-semibold text-sm">Active Orders ({filteredOrders.length})</h3>
                     <Button size="sm" onClick={() => sendAllDrafts(patient.id, activeCategory)}>
                         <Send className="w-3.5 h-3.5 mr-2" />
@@ -207,19 +219,19 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {filteredOrders.length > 0 ? filteredOrders.map(order => (
-                        <div key={order.orderId} className="flex items-center justify-between p-3 rounded-lg border bg-background shadow-sm">
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
+                        <div key={order.orderId} className="flex items-center justify-between p-3 rounded-lg border border-border/50 dark:border-white/5 bg-background shadow-sm">
+                            <div className="flex-1 mr-4">
+                                <div className="flex items-center gap-2 mb-1">
                                     <span className="font-medium text-sm">{order.label}</span>
                                     {order.status === 'draft' && <Badge variant="outline" className="text-[10px] bg-yellow-50 text-yellow-700 border-yellow-200">Draft</Badge>}
                                 </div>
                                 {order.category === 'medication' && (
-                                    <input
+                                    <Input
                                         type="text"
                                         placeholder="Add instructions..."
                                         value={order.instructions || ''}
                                         onChange={(e) => updateOrder(patient.id, order.orderId, { instructions: e.target.value })}
-                                        className="mt-1 w-full text-xs bg-transparent border-none p-0 focus:ring-0 text-muted-foreground placeholder:text-muted-foreground/50"
+                                        className="mt-1 w-full h-8 text-xs bg-transparent border-border/50 focus:ring-primary/20"
                                     />
                                 )}
                             </div>
@@ -227,7 +239,7 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
                                 <select
                                     value={order.priority}
                                     onChange={e => updateOrder(patient.id, order.orderId, { priority: e.target.value as OrderPriority })}
-                                    className="text-xs bg-transparent border rounded px-2 py-1"
+                                    className="h-8 text-xs bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
                                 >
                                     <option value="routine">Routine</option>
                                     <option value="urgent">Urgent</option>
@@ -257,11 +269,13 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
 // --- MAIN PAGE COMPONENT ---
 
 const PatientDetailPage: React.FC = () => {
-    const { id } = useParams<{ id: string }>();
+    const { id, tab } = useParams<{ id: string; tab?: string }>();
     const navigate = useNavigate();
     const { patients, isLoading } = usePatient();
     const { currentUser } = useAuth();
-    const [activeTab, setActiveTab] = useState('medview');
+
+    // Default to medview if no tab specified
+    const activeTab = tab || 'medview';
 
     // Reset scroll on tab change
     useEffect(() => {
@@ -269,8 +283,13 @@ const PatientDetailPage: React.FC = () => {
     }, [activeTab]);
 
     const handleTabChange = (value: string) => {
-        setActiveTab(value);
+        if (value === 'discharge') {
+            navigate(`/patient/${id}/discharge`);
+            return;
+        }
+        navigate(`/patient/${id}/${value}`);
     };
+
     const patient = useMemo(() => patients.find(p => p.id === id), [patients, id]);
 
     if (!patient) {
@@ -279,36 +298,36 @@ const PatientDetailPage: React.FC = () => {
     }
 
     const tabs = [
+        { id: 'medview', label: 'MedView', icon: Pill },
         { id: 'clinical', label: 'Clinical File', icon: FileText },
         { id: 'orders', label: 'Orders', icon: ClipboardList },
         { id: 'vitals', label: 'Vitals', icon: Activity },
-        { id: 'medview', label: 'MedView', icon: Pill },
         { id: 'rounds', label: 'Rounds', icon: Stethoscope },
+        { id: 'discharge', label: 'Discharge', icon: FileText },
     ] as const;
 
     return (
         <div className="min-h-screen bg-background pb-20 animate-in fade-in duration-500">
-            <PatientHeader patient={patient} onTabChange={setActiveTab} navigate={navigate} />
-            <PatientJourney status={patient.status} />
+            <PatientHeader patient={patient} onTabChange={handleTabChange} navigate={navigate} />
 
             <div className="w-full px-6">
                 {/* Tabs - v0 Style */}
                 <div className="border-b border-border mb-6">
                     <div className="flex gap-8 overflow-x-auto no-scrollbar">
-                        {tabs.map(tab => (
+                        {tabs.map(t => (
                             <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
+                                key={t.id}
+                                onClick={() => handleTabChange(t.id)}
                                 className={cn(
                                     "flex items-center gap-2 pb-3 text-sm font-medium transition-all relative whitespace-nowrap",
-                                    activeTab === tab.id
+                                    activeTab === t.id
                                         ? "text-primary"
                                         : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
-                                <tab.icon className="w-4 h-4" />
-                                {tab.label}
-                                {activeTab === tab.id && (
+                                <t.icon className="w-4 h-4" />
+                                {t.label}
+                                {activeTab === t.id && (
                                     <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />
                                 )}
                             </button>
@@ -322,6 +341,7 @@ const PatientDetailPage: React.FC = () => {
                     {activeTab === 'vitals' && <VitalsRedesigned patient={patient} />}
                     {activeTab === 'medview' && <MedViewRedesigned patient={patient} />}
                     {activeTab === 'rounds' && <RoundsRedesigned patient={patient} />}
+                    {activeTab === 'discharge' && <div className="p-4 text-center">Redirecting to Discharge Module...</div>}
                 </div>
             </div>
         </div>

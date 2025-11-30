@@ -72,6 +72,31 @@ export const VitalsRedesigned: React.FC<VitalsRedesignedProps> = ({ patient }) =
         ? ["Critical SpO₂ levels detected."]
         : [];
 
+    if (isLoading) {
+        return (
+            <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div className="lg:col-span-3 space-y-6">
+                        <div className="h-64 bg-muted/20 animate-pulse rounded-xl" />
+                        <div className="h-40 bg-muted/20 animate-pulse rounded-xl" />
+                    </div>
+                    <div className="lg:col-span-6 space-y-4">
+                        <div className="h-8 w-48 bg-muted/20 animate-pulse rounded" />
+                        <div className="space-y-4">
+                            <div className="h-48 bg-muted/20 animate-pulse rounded-xl" />
+                            <div className="h-48 bg-muted/20 animate-pulse rounded-xl" />
+                            <div className="h-48 bg-muted/20 animate-pulse rounded-xl" />
+                        </div>
+                    </div>
+                    <div className="lg:col-span-3 space-y-6">
+                        <div className="h-32 bg-muted/20 animate-pulse rounded-xl" />
+                        <div className="h-48 bg-muted/20 animate-pulse rounded-xl" />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* 3-Column Layout */}

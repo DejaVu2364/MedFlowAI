@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePatient } from '../contexts/PatientContext';
 import { Patient, TriageLevel } from '../types';
-import { PlusIcon, MagnifyingGlassIcon, UserGroupIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { UserGroupIcon, ClockIcon, ExclamationTriangleIcon } from '@heroicons/react/24/solid';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
+import { TriageBadge } from '../components/common/TriageBadge';
 import { cn } from '../lib/utils';
 
 const StatCard: React.FC<{ label: string; value: number | string; icon: React.ElementType; trend?: string; trendUp?: boolean; colorClass?: string; bgClass?: string }> = ({ label, value, icon: Icon, trend, trendUp, colorClass, bgClass }) => (
@@ -45,13 +47,13 @@ const PatientList: React.FC<{ title: string; patients: Patient[]; onSelect: (id:
                         <div
                             key={p.id}
                             onClick={() => onSelect(p.id)}
+                            role="button"
+                            data-testid={`patient-card-${p.name}`}
                             className="p-4 hover:bg-muted/30 cursor-pointer transition-colors group"
                         >
                             <div className="flex justify-between items-start mb-1">
                                 <h4 className="font-medium text-sm group-hover:text-primary transition-colors">{p.name}</h4>
-                                <Badge variant={p.triage.level === 'Red' ? 'destructive' : p.triage.level === 'Yellow' ? 'secondary' : 'outline'} className="text-[10px] uppercase">
-                                    {p.triage.level}
-                                </Badge>
+                                <TriageBadge level={p.triage.level} className="text-[10px] uppercase" />
                             </div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>{p.age}y / {p.gender}</span>
@@ -59,7 +61,7 @@ const PatientList: React.FC<{ title: string; patients: Patient[]; onSelect: (id:
                                 <span className="font-mono">{p.id.slice(0, 8)}</span>
                             </div>
                             <div className="mt-2 flex items-center justify-between">
-                                <span className="text-xs font-medium text-muted-foreground">{p.chiefComplaint}</span>
+                                <span className="text-xs font-medium text-muted-foreground">{p.chiefComplaints?.[0]?.complaint || 'No complaints'}</span>
                                 <span className="text-[10px] text-muted-foreground">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                         </div>
@@ -80,6 +82,8 @@ const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
 
+    console.log("DEBUG: DashboardPage mounted");
+
     const stats = useMemo(() => {
         const total = patients.length;
         const critical = patients.filter(p => p.triage.level === 'Red').length;
@@ -93,7 +97,7 @@ const DashboardPage: React.FC = () => {
     }, [patients, searchTerm]);
 
     const waitingPatients = filteredPatients.filter(p => p.status === 'Waiting for Triage' || p.status === 'Waiting for Doctor');
-    const activePatients = filteredPatients.filter(p => p.status === 'In Treatment' || p.status === 'Observation');
+    const activePatients = filteredPatients.filter(p => p.status === 'In Treatment');
     const dischargedPatients = filteredPatients.filter(p => p.status === 'Discharged');
 
     const handlePatientSelect = (id: string) => {
@@ -102,15 +106,21 @@ const DashboardPage: React.FC = () => {
     };
 
     if (isLoading && patients.length === 0) {
-        return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading dashboard...</div>;
+        console.log("DEBUG: DashboardPage rendering LOADING state");
+        return <div data-testid="dashboard-loading" className="flex items-center justify-center h-screen text-muted-foreground">Loading dashboard...</div>;
     }
 
+    console.log("DEBUG: DashboardPage rendering MAIN content. Patients count:", patients.length);
+    console.log("DEBUG: Waiting Patients count:", waitingPatients.length);
+    if (patients.length > 0) {
+        console.log("DEBUG: First patient:", patients[0].name, patients[0].status);
+    }
     return (
-        <div className="space-y-8 max-w-[1600px] mx-auto pb-10 animate-in fade-in duration-500">
+        <div data-testid="dashboard-container" className="space-y-8 max-w-[1600px] mx-auto pb-10">
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+                    <h1 data-testid="dashboard-title" className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
                     <p className="text-muted-foreground text-sm">Overview of current department status.</p>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto">

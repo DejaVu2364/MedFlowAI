@@ -4,7 +4,8 @@ import { usePatient } from '../contexts/PatientContext';
 import { useAuth } from '../contexts/AuthContext';
 import { DischargeSummary } from '../types';
 import TextareaAutosize from 'react-textarea-autosize';
-import { SparklesIcon, CheckBadgeIcon, DocumentTextIcon, XMarkIcon, PlusIcon, PencilIcon } from '../components/icons';
+import { Button } from '../components/ui/button';
+import { SparklesIcon, CheckBadgeIcon, DocumentTextIcon, XMarkIcon, PlusIcon, PencilIcon, ExclamationTriangleIcon } from '../components/icons';
 
 // --- COMPONENTS ---
 
@@ -148,9 +149,9 @@ const DischargeSummaryPage: React.FC = () => {
                 <div>
                     <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
                         <DocumentTextIcon className="w-6 h-6 text-brand-blue" />
-                        Discharge Workflow: {patient.name}
+                        Discharge Summary
                     </h1>
-                    <p className="text-sm text-text-secondary">UHID: {patient.id} • Ward 4 • Bed 12</p>
+                    <p className="text-sm text-text-secondary">MedFlow Hospital, Bangalore • {patient.name} • {patient.id}</p>
                 </div>
                 <div className="flex gap-3">
                     <Button variant="ghost" size="sm" onClick={() => navigate(`/patient/${patient.id}`)} className="text-text-secondary hover:text-text-primary">
@@ -202,6 +203,12 @@ const DischargeSummaryPage: React.FC = () => {
                             <div className="mt-6 p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 text-xs rounded-lg border border-blue-100 flex items-center gap-2">
                                 <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                                 AI Drafting in progress...
+                            </div>
+                        )}
+                        {!isGenerating && !summary.finalDiagnosis && (
+                            <div className="mt-6 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 text-xs rounded-lg border border-yellow-100 flex items-center gap-2">
+                                <ExclamationTriangleIcon className="w-4 h-4" />
+                                AI Draft incomplete. Please fill manually.
                             </div>
                         )}
                     </div>
@@ -340,10 +347,12 @@ const DischargeSummaryPage: React.FC = () => {
                             <input type="text" value={summary.conditionAtDischarge || ''} onChange={e => handleChange('conditionAtDischarge', e.target.value)} className="w-full text-sm font-medium border-b border-border-color focus:border-brand-blue outline-none py-2 bg-transparent text-text-primary" placeholder="e.g. Hemodynamically stable, wounds dry and clean." />
                         </section>
                         <div className="p-6 text-right opacity-70">
-                            <p className="font-script text-2xl text-brand-blue-dark mb-1">{currentUser?.name}</p>
+                            <p className="font-script text-2xl text-brand-blue-dark mb-1">Dr. Harikrishnan S</p>
+                            <p className="text-xs text-text-secondary mb-2">Consultant Physician • Reg: KA-12345</p>
                             <div className="h-px w-48 bg-black dark:bg-gray-400 ml-auto mb-2"></div>
                             <p className="text-xs font-bold uppercase text-text-secondary">Consultant Signature</p>
-                            <p className="text-xs text-text-secondary">{new Date().toLocaleDateString()}</p>
+                            <p className="text-xs text-text-secondary">MedFlow Hospital, Bangalore</p>
+                            <p className="text-xs text-text-secondary">{new Date().toLocaleDateString('en-IN')}</p>
                         </div>
                     </div>
                 </div>

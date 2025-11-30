@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePatient } from '../../contexts/PatientContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Patient, User, HistorySectionData, SystemicExamSectionData, Allergy } from '../../types';
-import { CheckCircleIcon, ExclamationCircleIcon, MicrophoneIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, ExclamationCircleIcon, MicrophoneIcon, PlusIcon, XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
@@ -11,6 +11,7 @@ import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { AIInsightBubble } from '../medview/AIInsightBubble';
 import VoiceInput from '../VoiceInput';
+import { MultiComplaintWithDuration } from '../common/MultiComplaintWithDuration';
 import { cn } from '../../lib/utils';
 
 // --- TYPES ---
@@ -24,37 +25,16 @@ interface SectionProps {
 // --- SECTIONS ---
 
 const ComplaintSection: React.FC<SectionProps> = ({ patient, isSignedOff, onSave }) => {
-    const { updateClinicalFileSection, checkMissingInfo } = usePatient();
-    const complaint = patient.clinicalFile.sections.history?.complaints?.[0]?.symptom || '';
-    const [isScanning, setIsScanning] = useState(false);
-
-    const handleChange = (val: string) => {
-        updateClinicalFileSection(patient.id, 'history', { complaints: [{ symptom: val, duration: 'Unknown' }] });
-    };
-
-    const handleScan = async () => {
-        setIsScanning(true);
-        await checkMissingInfo(patient.id, 'history');
-        setIsScanning(false);
-    };
+    const { updatePatientComplaint } = usePatient();
 
     return (
         <div className="space-y-4">
             <div className="relative">
-                <Input
-                    value={complaint}
-                    onChange={e => handleChange(e.target.value)}
+                <MultiComplaintWithDuration
+                    value={patient.chiefComplaints || []}
+                    onChange={(newComplaints) => updatePatientComplaint(patient.id, newComplaints)}
                     disabled={isSignedOff}
-                    placeholder="e.g., Sudden onset chest pain"
-                    className="text-lg font-medium h-12"
-                    data-testid="complaint-input"
-                    aria-label="Presenting Complaint input"
                 />
-                {!isSignedOff && (
-                    <div className="absolute right-2 top-2.5 flex gap-2">
-                        <AIInsightBubble type="missing-info" onClick={handleScan} label={isScanning ? "Scanning..." : "Scan Missing"} />
-                    </div>
-                )}
             </div>
             {!isSignedOff && (
                 <div className="flex justify-end">
@@ -184,8 +164,8 @@ const HistoryGridSection: React.FC<SectionProps> = ({ patient, isSignedOff, onSa
     const { updateClinicalFileSection } = usePatient();
     const history = patient.clinicalFile.sections.history || {};
 
-    const Field = ({ label, fieldKey }: { label: string, fieldKey: keyof HistorySectionData }) => (
-        <div className="space-y-1.5">
+    const renderField = (label: string, fieldKey: keyof HistorySectionData) => (
+        <div className="space-y-1.5" key={fieldKey}>
             <label className="text-xs font-semibold text-muted-foreground uppercase">{label}</label>
             <Textarea
                 value={(history[fieldKey] as string) || ''}
@@ -200,10 +180,10 @@ const HistoryGridSection: React.FC<SectionProps> = ({ patient, isSignedOff, onSa
     return (
         <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Past Medical History" fieldKey="past_medical_history" />
-                <Field label="Drug History" fieldKey="drug_history" />
-                <Field label="Family History" fieldKey="family_history" />
-                <Field label="Social History" fieldKey="personal_social_history" />
+                {renderField("Past Medical History", "past_medical_history")}
+                {renderField("Drug History", "drug_history")}
+                {renderField("Family History", "family_history")}
+                {renderField("Social History", "personal_social_history")}
             </div>
             {!isSignedOff && (
                 <div className="flex justify-end">
@@ -277,14 +257,14 @@ const GPESection: React.FC<SectionProps> = ({ patient, isSignedOff, onSave }) =>
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="text-xs font-semibold text-muted-foreground uppercase">Appearance</label>
-                    <select value={gpe.general_appearance || ''} onChange={e => updateClinicalFileSection(patient.id, 'gpe', { general_appearance: e.target.value })} disabled={isSignedOff} className="w-full mt-1 p-2 bg-background border rounded-md text-sm outline-none focus:ring-2 focus:ring-ring">
-                        <option value="">Select...</option><option value="well">Well</option><option value="ill">Ill-looking</option><option value="toxic">Toxic</option>
+                    <select value={gpe.general_appearance || ''} onChange={e => updateClinicalFileSection(patient.id, 'gpe', { general_appearance: e.target.value as any })} disabled={isSignedOff} className="w-full mt-1 p-2 bg-background border rounded-md text-sm outline-none focus:ring-2 focus:ring-ring">
+                        <option value="">Select...</option><option value="well">Well</option><option value="ill">Ill-looking</option><option value="toxic">Toxic</option><option value="cachectic">Cachectic</option>
                     </select>
                 </div>
                 <div>
                     <label className="text-xs font-semibold text-muted-foreground uppercase">Build</label>
-                    <select value={gpe.build || ''} onChange={e => updateClinicalFileSection(patient.id, 'gpe', { build: e.target.value })} disabled={isSignedOff} className="w-full mt-1 p-2 bg-background border rounded-md text-sm outline-none focus:ring-2 focus:ring-ring">
-                        <option value="">Select...</option><option value="average">Average</option><option value="thin">Thin</option><option value="obese">Obese</option>
+                    <select value={gpe.build || ''} onChange={e => updateClinicalFileSection(patient.id, 'gpe', { build: e.target.value as any })} disabled={isSignedOff} className="w-full mt-1 p-2 bg-background border rounded-md text-sm outline-none focus:ring-2 focus:ring-ring">
+                        <option value="">Select...</option><option value="average">Average</option><option value="thin">Thin</option><option value="obese">Obese</option><option value="cachectic">Cachectic</option><option value="normal">Normal</option>
                     </select>
                 </div>
             </div>
@@ -334,7 +314,7 @@ const SystemicSection: React.FC<SectionProps> = ({ patient, isSignedOff, onSave 
                 <div key={key} className="space-y-1.5">
                     <label className="text-xs font-semibold text-muted-foreground uppercase">{label}</label>
                     <Textarea
-                        minRows={2}
+                        rows={2}
                         value={systemic[key]?.summary || ''}
                         onChange={e => updateClinicalFileSection(patient.id, 'systemic', { [key]: { ...systemic[key], summary: e.target.value } })}
                         disabled={isSignedOff}
@@ -373,7 +353,7 @@ const SignOffSection: React.FC<{ patient: Patient; user: User }> = ({ patient, u
     }
 
     return (
-        <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/20 dark:to-gray-800 border border-indigo-100 dark:border-indigo-800 rounded-xl p-6 flex flex-col items-center justify-center gap-4 shadow-sm">
+        <div className="bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/10 dark:to-gray-800 border border-indigo-100 dark:border-white/5 rounded-xl p-6 flex flex-col items-center justify-center gap-4 shadow-sm">
             <div className="text-center">
                 <h3 className="text-lg font-bold">Ready to Finalize?</h3>
                 <p className="text-sm text-muted-foreground">AI will cross-check for inconsistencies before signing.</p>
@@ -394,14 +374,18 @@ const SignOffSection: React.FC<{ patient: Patient; user: User }> = ({ patient, u
 
 const ClinicalFileRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
     const { currentUser } = useAuth();
+    const { isLoading, generateClinicalFileFromVoice } = usePatient();
     const [openItem, setOpenItem] = useState<string | undefined>('complaint');
+    const [isScribeOpen, setIsScribeOpen] = useState(false);
+    const [scribeTranscript, setScribeTranscript] = useState('');
+    const [isProcessingScribe, setIsProcessingScribe] = useState(false);
 
     // Helper to check completion (simplified)
     const isComplete = (section: string) => {
         const h = patient.clinicalFile.sections.history;
         const g = patient.clinicalFile.sections.gpe;
         switch (section) {
-            case 'complaint': return !!h?.complaints?.[0]?.symptom;
+            case 'complaint': return (patient.chiefComplaints?.length || 0) > 0;
             case 'hpi': return !!h?.hpi && h.hpi.length > 10;
             case 'symptoms': return (h?.associated_symptoms?.length || 0) > 0;
             case 'allergies': return (h?.allergy_history?.length || 0) > 0;
@@ -419,6 +403,21 @@ const ClinicalFileRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => 
         }
     };
 
+    const handleScribeFinish = async () => {
+        if (!scribeTranscript.trim()) return;
+        setIsProcessingScribe(true);
+        try {
+            await generateClinicalFileFromVoice(patient.id, scribeTranscript);
+            setIsScribeOpen(false);
+            setScribeTranscript('');
+            alert("Clinical File updated from speech!");
+        } catch (e) {
+            alert("Failed to process speech.");
+        } finally {
+            setIsProcessingScribe(false);
+        }
+    };
+
     const sections = [
         { id: 'complaint', label: 'Presenting Complaint', Component: ComplaintSection },
         { id: 'hpi', label: 'History of Present Illness', Component: HPISection },
@@ -429,27 +428,86 @@ const ClinicalFileRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => 
         { id: 'systemic', label: 'Systemic Exam', Component: SystemicSection },
     ];
 
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-background pb-20">
+                <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-10 space-y-8">
+                    <div className="space-y-4">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="h-16 bg-muted/20 animate-pulse rounded-xl border border-border/50" />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-background pb-20">
             <div className="max-w-5xl mx-auto px-6 sm:px-8 lg:px-10 py-10 space-y-8">
+
+                {/* AI Scribe Header */}
+                <div className="flex justify-between items-center bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+                    <div>
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <SparklesIcon className="w-6 h-6" />
+                            AI Clinical Scribe
+                        </h2>
+                        <p className="text-indigo-100 text-sm mt-1">Dictate the entire case and let AI populate the file.</p>
+                    </div>
+                    <Button
+                        onClick={() => setIsScribeOpen(!isScribeOpen)}
+                        variant="secondary"
+                        className="bg-white text-indigo-600 hover:bg-indigo-50 border-none shadow-md font-bold"
+                    >
+                        {isScribeOpen ? "Close Scribe" : "Start Scribe"}
+                    </Button>
+                </div>
+
+                {isScribeOpen && (
+                    <div className="bg-card border border-border rounded-xl p-6 shadow-md animate-in slide-in-from-top-4">
+                        <h3 className="font-semibold mb-4">Dictate Case Notes</h3>
+                        <div className="relative">
+                            <Textarea
+                                value={scribeTranscript}
+                                onChange={e => setScribeTranscript(e.target.value)}
+                                placeholder="Start speaking or typing... (e.g., 'Patient presents with 3 days of fever...')"
+                                className="min-h-[150px] pr-12 text-lg"
+                            />
+                            <div className="absolute bottom-3 right-3">
+                                <VoiceInput onTranscript={t => setScribeTranscript(prev => prev + ' ' + t)} />
+                            </div>
+                        </div>
+                        <div className="flex justify-end mt-4">
+                            <Button
+                                onClick={handleScribeFinish}
+                                disabled={!scribeTranscript || isProcessingScribe}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                                {isProcessingScribe ? "Processing..." : "Auto-Populate File"}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+
                 <Accordion type="single" collapsible value={openItem} onValueChange={setOpenItem} className="space-y-4">
                     {sections.map(({ id, label, Component }, index) => {
                         const completed = isComplete(id);
                         const nextSectionId = sections[index + 1]?.id;
 
                         return (
-                            <AccordionItem key={id} value={id} className="border border-border/50 rounded-xl bg-card px-6 shadow-sm hover:shadow-md transition-all duration-200">
-                                <AccordionTrigger className="hover:no-underline py-6">
+                            <AccordionItem key={id} value={id} className="border rounded-lg bg-card">
+                                <AccordionTrigger className="hover:no-underline py-4 px-6 hover:bg-muted/50 transition-colors">
                                     <div className="flex items-center gap-3">
                                         {completed ? (
-                                            <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                                            <CheckCircleIcon className="w-5 h-5 text-primary" />
                                         ) : (
                                             <div className="w-5 h-5 rounded-full border-2 border-muted" />
                                         )}
-                                        <span className={cn("font-semibold", completed && "text-green-700 dark:text-green-400")}>{label}</span>
+                                        <span className={cn("font-medium", completed && "text-primary")}>{label}</span>
                                     </div>
                                 </AccordionTrigger>
-                                <AccordionContent className="pt-2 pb-6">
+                                <AccordionContent className="pt-4 pb-6 px-6">
                                     <Component
                                         patient={patient}
                                         isSignedOff={patient.clinicalFile.status === 'signed'}

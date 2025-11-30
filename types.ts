@@ -234,13 +234,6 @@ export interface Allergy {
     severity: 'Mild' | 'Moderate' | 'Severe' | '';
 }
 
-export interface Complaint {
-    symptom: string;
-    duration: string;
-    severity?: string;
-    notes?: string;
-}
-
 export interface HistorySectionData {
     complaints: Complaint[]; // REPLACED chief_complaint & duration with this array
     hpi: string;
@@ -365,13 +358,26 @@ export interface ActiveProblem {
     notes?: string;
 }
 
+export interface Complaint {
+    symptom: string;
+    duration: string;
+    severity?: string;
+    notes?: string;
+}
+
+export type ChiefComplaint = {
+    complaint: string;
+    durationValue: number;
+    durationUnit: "hours" | "days" | "weeks" | "months";
+};
+
 export interface Patient {
     id: string;
     name: string;
     age: number;
     gender: 'Male' | 'Female' | 'Other';
-    phone: string;
-    complaint: string; // Kept for Dashboard display (primary complaint)
+    contact: string;
+    chiefComplaints: ChiefComplaint[]; // REPLACED chief_complaint & duration with this array
     status: PatientStatus;
     vitals?: VitalsMeasurements;
     vitalsHistory: VitalsRecord[];
@@ -411,7 +417,7 @@ export type AppContextType = {
     addNoteToPatient: (patientId: string, content: string, isEscalation?: boolean) => Promise<void>;
     addSOAPNoteToPatient: (patientId: string, soapData: Omit<SOAPNote, 'id' | 'type' | 'patientId' | 'timestamp' | 'author' | 'authorId' | 'role'>, originalSuggestion: any) => Promise<void>;
     addChecklistToPatient: (patientId: string, title: string, items: string[]) => Promise<void>;
-    updatePatientComplaint: (patientId: string, newComplaint: string) => void;
+    updatePatientComplaint: (patientId: string, newComplaints: ChiefComplaint[]) => void;
     logAuditEvent: (event: Omit<AuditEvent, 'id' | 'timestamp'>) => void;
     toggleChecklistItem: (patientId: string, checklistId: string, itemIndex: number) => void;
     selectedPatientId: string | null;

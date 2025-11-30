@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { Patient, AuditEvent, User, PatientStatus, Vitals, VitalsRecord, SOAPNote, TeamNote, Checklist, Order, OrderCategory, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, VitalsMeasurements, DischargeSummary } from '../types';
+import { Patient, AuditEvent, User, PatientStatus, Vitals, VitalsRecord, SOAPNote, TeamNote, Checklist, Order, OrderCategory, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, VitalsMeasurements, DischargeSummary, ChiefComplaint } from '../types';
 import { seedPatients, calculateTriageFromVitals, logAuditEventToServer } from '../services/api';
 import { subscribeToPatients, savePatient, updatePatientInDb, logAuditToDb, getIsFirebaseInitialized } from '../services/firebase';
 import { classifyComplaint, suggestOrdersFromClinicalFile, generateStructuredDischargeSummary, generateOverviewSummary, summarizeClinicalFile, summarizeVitals as summarizeVitalsFromService, crossCheckRound, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph, generateHandoverSummary as generateHandoverSummaryService, answerWithRAG, scanForMissingInfo, summarizeSection as summarizeSectionService, crossCheckClinicalFile, checkOrderSafety } from '../services/geminiService';
@@ -12,15 +12,18 @@ export const usePatientData = (currentUser: User | null) => {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const { addToast } = useToast();
+    console.log("DEBUG: usePatientData render, user:", currentUser?.email);
 
     // Initial Data Load & Sync
     useEffect(() => {
         let unsubscribe: (() => void) | undefined;
         const initialize = async () => {
+            console.log("DEBUG: initialize called");
             setIsLoading(true);
 
             // Safety timeout to ensure loading state doesn't hang
             const safetyTimeout = setTimeout(() => {
+                console.log("DEBUG: safetyTimeout triggered");
                 setIsLoading(false);
             }, 5000);
 
@@ -29,10 +32,11 @@ export const usePatientData = (currentUser: User | null) => {
                 unsubscribe = subscribeToPatients((realtimePatients) => {
                     clearTimeout(safetyTimeout);
                     if (realtimePatients.length === 0) {
-                        // Only seed if strictly necessary and empty
-                        // seedPatients().then(seeded => {
-                        //     seeded.forEach(p => savePatient(p));
-                        // });
+                        // Auto-seed if empty to prevent "broken" feel
+                        console.log("DEBUG: DB empty, seeding initial data...");
+                        seedPatients().then(seeded => {
+                            seeded.forEach(p => savePatient(p));
+                        });
                     } else {
                         setPatients(realtimePatients);
                     }
@@ -41,12 +45,16 @@ export const usePatientData = (currentUser: User | null) => {
             } else {
                 // Local Mode Fallback
                 try {
+                    console.log("DEBUG: Seeding patients...");
                     const initialPatients = await seedPatients();
+                    console.log("DEBUG: Seeded patients:", initialPatients.length);
                     setPatients(initialPatients);
                 } catch (e) {
+                    console.error("DEBUG: Seed failed", e);
                     setError('Failed to load initial data.');
                 } finally {
                     clearTimeout(safetyTimeout);
+                    console.log("DEBUG: initialize finally, setting isLoading false");
                     setIsLoading(false);
                 }
             }
@@ -96,6 +104,7 @@ export const usePatientData = (currentUser: User | null) => {
     }, []);
 
     const addPatient = useCallback(async (patientData: Omit<Patient, 'id' | 'status' | 'registrationTime' | 'triage' | 'timeline' | 'orders' | 'vitalsHistory' | 'clinicalFile' | 'rounds' | 'dischargeSummary' | 'overview' | 'results' | 'vitals' | 'handoverSummary'>) => {
+        console.log("DEBUG: addPatient entered");
         setIsLoading(true);
         setError(null);
 
@@ -103,7 +112,9 @@ export const usePatientData = (currentUser: User | null) => {
             let aiTriageWithCache: any;
 
             try {
-                const result = await classifyComplaint(patientData.complaint);
+                // Use the first complaint for AI triage for now
+                const primaryComplaint = patientData.chiefComplaints[0]?.complaint || '';
+                const result = await classifyComplaint(primaryComplaint);
                 aiTriageWithCache = { ...result.data, fromCache: result.fromCache };
             } catch (e) {
                 console.warn("AI Triage failed, falling back to default:", e);
@@ -129,7 +140,7 @@ export const usePatientData = (currentUser: User | null) => {
                     aiSuggestions: {},
                     sections: {
                         history: {
-                            complaints: [{ symptom: patientData.complaint, duration: 'Unknown' }],
+                            complaints: patientData.chiefComplaints.map(c => ({ symptom: c.complaint, duration: `${c.durationValue} ${c.durationUnit}` })),
                             hpi: '',
                             associated_symptoms: [],
                             allergy_history: [],
@@ -153,6 +164,7 @@ export const usePatientData = (currentUser: User | null) => {
             const msg = err.message || "Failed to register patient.";
             setError(msg);
             addToast(msg, 'error');
+            throw err;
         } finally {
             setIsLoading(false);
         }
@@ -194,6 +206,12 @@ export const usePatientData = (currentUser: User | null) => {
             setIsLoading(false);
         }
     }, [currentUser, updateStateAndDb]);
+
+    const updatePatientComplaint = useCallback((patientId: string, newComplaints: ChiefComplaint[]) => {
+        if (!currentUser) return;
+        updateStateAndDb(patientId, p => ({ ...p, chiefComplaints: newComplaints }));
+        logAuditEvent({ userId: currentUser.id, patientId, action: 'modify', entity: 'patient_record', payload: { field: 'chiefComplaints', value: newComplaints } });
+    }, [currentUser, updateStateAndDb, logAuditEvent]);
 
     const updatePatientStatus = useCallback((patientId: string, status: PatientStatus) => {
         if (!currentUser) return;
@@ -385,7 +403,7 @@ export const usePatientData = (currentUser: User | null) => {
         try {
             const missingItems = await scanForMissingInfo(section, patient.clinicalFile.sections[section]);
             if (missingItems.length > 0) {
-                addToast(`Missing Info in ${section}: ${missingItems.join(', ')}`, 'warning');
+                addToast(`Missing Info in ${section}: ${missingItems.join(', ')}`, 'error');
             } else {
                 addToast(`${section} appears complete.`, 'success');
             }
@@ -476,7 +494,7 @@ export const usePatientData = (currentUser: User | null) => {
             if (inconsistencies.length === 0) {
                 addToast("No inconsistencies found.", 'success');
             } else {
-                addToast(`Found ${inconsistencies.length} potential inconsistencies.`, 'warning');
+                addToast(`Found ${inconsistencies.length} potential inconsistencies.`, 'error');
             }
         } catch (e) { console.error(e); }
         setIsLoading(false);
@@ -532,13 +550,60 @@ export const usePatientData = (currentUser: User | null) => {
         addToast("Orders sent successfully", 'success');
     }, [updateStateAndDb, addToast]);
 
+    const createDraftRound = useCallback(async (patientId: string) => {
+        if (!currentUser) throw new Error("No user");
+        const newRound: Round = {
+            roundId: `RND-${Date.now()}`,
+            patientId,
+            doctorId: currentUser.id,
+            createdAt: new Date().toISOString(),
+            status: 'draft',
+            subjective: '',
+            objective: '',
+            assessment: '',
+            plan: { text: '', linkedOrders: [] },
+            linkedResults: [],
+            signedBy: null,
+            signedAt: null
+        };
+        updateStateAndDb(patientId, p => ({ ...p, rounds: [newRound, ...p.rounds] }));
+        return newRound;
+    }, [currentUser, updateStateAndDb]);
+
+    const updateDraftRound = useCallback((patientId: string, roundId: string, updates: Partial<Round>) => {
+        updateStateAndDb(patientId, p => ({
+            ...p,
+            rounds: p.rounds.map(r => r.roundId === roundId ? { ...r, ...updates } : r)
+        }));
+    }, [updateStateAndDb]);
+
+    const signOffRound = useCallback(async (patientId: string, roundId: string, acknowledgedContradictions: string[]) => {
+        if (!currentUser) return;
+        updateStateAndDb(patientId, p => ({
+            ...p,
+            rounds: p.rounds.map(r => r.roundId === roundId ? {
+                ...r,
+                status: 'signed',
+                signedBy: currentUser.id,
+                signedAt: new Date().toISOString()
+            } : r)
+        }));
+        addToast("Round signed off successfully", 'success');
+    }, [currentUser, updateStateAndDb, addToast]);
+
+    const getRoundContradictions = useCallback(async (patientId: string, roundId: string) => {
+        // Placeholder for AI contradiction check
+        return [];
+    }, []);
+
     return {
         patients, auditLog, isLoading, error, setError,
         setPatients,
-        addPatient, updatePatientVitals, updatePatientStatus, addNoteToPatient, addSOAPNoteToPatient,
+        addPatient, updatePatientVitals, updatePatientStatus, updatePatientComplaint, addNoteToPatient, addSOAPNoteToPatient,
         updateClinicalFileSection, composeHistoryWithAI, signOffClinicalFile, logAuditEvent,
         updateStateAndDb, generateDischargeSummary, saveDischargeSummary, finalizeDischarge, generatePatientOverview, generateHandoverSummary,
         summarizePatientClinicalFile, formatHpi, checkMissingInfo, summarizeSection, getFollowUpQuestions, updateFollowUpAnswer: updateFollowUpAnswerCorrect, crossCheckFile,
-        addOrderToPatient, updateOrder, sendAllDrafts
+        addOrderToPatient, updateOrder, sendAllDrafts,
+        createDraftRound, updateDraftRound, signOffRound, getRoundContradictions
     };
 };
