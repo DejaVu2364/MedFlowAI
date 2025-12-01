@@ -18,7 +18,8 @@ import {
     Scissors,
     AlertCircle,
     AlertTriangle,
-    CheckCircle
+    CheckCircle,
+    FileBarChart
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -33,6 +34,8 @@ import MedViewRedesigned from '../components/medview/MedViewRedesigned';
 import { VitalsRedesigned } from '../components/vitals/VitalsRedesigned';
 import { RoundsRedesigned } from '../components/rounds/RoundsRedesigned';
 import { PatientJourney } from '../components/patient/PatientJourney';
+import { OrdersReportList } from '../components/clinical/OrdersReportList';
+import { ReportViewer } from '../components/clinical/ReportViewer';
 
 // --- PATIENT HEADER ---
 
@@ -75,7 +78,7 @@ const PatientHeader: React.FC<{ patient: Patient; onTabChange: (tab: any) => voi
                         <Activity className="w-4 h-4 mr-2" />
                         Vitals
                     </Button>
-                    <Button variant="default" size="sm" onClick={() => navigate(`/discharge/${patient.id}`)}>
+                    <Button variant="default" size="sm" onClick={() => navigate(`/patient/${patient.id}/discharge`)}>
                         <FileText className="w-4 h-4 mr-2" />
                         Discharge
                     </Button>
@@ -131,6 +134,8 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
     const { updateOrder, addOrderToPatient, sendAllDrafts } = usePatient();
     const [activeCategory, setActiveCategory] = useState<OrderCategory>('investigation');
     const [searchTerm, setSearchTerm] = useState('');
+    const [showReports, setShowReports] = useState(false);
+    const [selectedReport, setSelectedReport] = useState<any>(null);
 
     const categories: { key: OrderCategory; label: string; icon: any }[] = [
         { key: 'investigation', label: 'Labs', icon: Beaker },
@@ -159,107 +164,137 @@ const OrdersTab: React.FC<{ patient: Patient }> = React.memo(({ patient }) => {
         setSearchTerm('');
     };
 
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-250px)]">
-            {/* Catalog Sidebar */}
-            <div className="lg:col-span-4 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden">
-                <div className="p-4 border-b border-border/50 dark:border-white/5 bg-muted/30">
-                    <div className="relative">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            type="text"
-                            placeholder={`Search ${activeCategory}...`}
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 h-9 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        />
-                    </div>
-                    <div className="flex gap-1 mt-3 overflow-x-auto pb-1 no-scrollbar">
-                        {categories.map(cat => (
-                            <button
-                                key={cat.key}
-                                onClick={() => setActiveCategory(cat.key)}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
-                                    activeCategory === cat.key
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "bg-background hover:bg-muted text-muted-foreground"
-                                )}
-                            >
-                                <cat.icon className="w-3.5 h-3.5" /> {cat.label}
-                            </button>
-                        ))}
-                    </div>
+    if (showReports) {
+        return (
+            <div className="h-[calc(100vh-250px)] flex flex-col">
+                <div className="flex items-center gap-4 mb-4">
+                    <Button variant="ghost" onClick={() => setShowReports(false)} className="gap-2">
+                        ← Back to Orders
+                    </Button>
+                    <h2 className="text-lg font-bold">Reports Viewer</h2>
                 </div>
+                <OrdersReportList onView={(report) => setSelectedReport(report)} />
+                <ReportViewer
+                    report={selectedReport}
+                    open={!!selectedReport}
+                    onOpenChange={(open) => !open && setSelectedReport(null)}
+                />
+            </div>
+        );
+    }
 
-                <div className="flex-1 overflow-y-auto p-2">
-                    <div className="space-y-1">
-                        {filteredCatalog.map((item) => (
-                            <button
-                                key={item}
-                                onClick={() => handleCatalogClick(item)}
-                                className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors flex items-center justify-between group"
-                            >
-                                {item}
-                                <Plus className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-primary" />
-                            </button>
-                        ))}
-                    </div>
+    return (
+        <div className="h-[calc(100vh-250px)]">
+            <div className="flex justify-between items-center mb-4 px-1">
+                <div className="flex gap-2">
+                    <Button variant={!showReports ? "secondary" : "ghost"} size="sm" onClick={() => setShowReports(false)}>Active Orders</Button>
+                    <Button variant={showReports ? "secondary" : "ghost"} size="sm" onClick={() => setShowReports(true)} className="gap-2">
+                        <FileBarChart className="w-4 h-4" /> Reports
+                    </Button>
                 </div>
             </div>
 
-            {/* Active Orders */}
-            <div className="lg:col-span-8 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden">
-                <div className="p-4 border-b border-border/50 dark:border-white/5 flex justify-between items-center bg-muted/30">
-                    <h3 className="font-semibold text-sm">Active Orders ({filteredOrders.length})</h3>
-                    <Button size="sm" onClick={() => sendAllDrafts(patient.id, activeCategory)}>
-                        <Send className="w-3.5 h-3.5 mr-2" />
-                        Sign & Send
-                    </Button>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+                {/* Catalog Sidebar */}
+                <div className="lg:col-span-4 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden h-full">
+                    <div className="p-4 border-b border-border/50 dark:border-white/5 bg-muted/30">
+                        <div className="relative">
+                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                type="text"
+                                placeholder={`Search ${activeCategory}...`}
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 h-9 text-sm bg-background border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                        </div>
+                        <div className="flex gap-1 mt-3 overflow-x-auto pb-1 no-scrollbar">
+                            {categories.map(cat => (
+                                <button
+                                    key={cat.key}
+                                    onClick={() => setActiveCategory(cat.key)}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap",
+                                        activeCategory === cat.key
+                                            ? "bg-primary text-primary-foreground shadow-sm"
+                                            : "bg-background hover:bg-muted text-muted-foreground"
+                                    )}
+                                >
+                                    <cat.icon className="w-3.5 h-3.5" /> {cat.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-2">
+                        <div className="space-y-1">
+                            {filteredCatalog.map((item) => (
+                                <button
+                                    key={item}
+                                    onClick={() => handleCatalogClick(item)}
+                                    className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted rounded-md transition-colors flex items-center justify-between group"
+                                >
+                                    {item}
+                                    <Plus className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 text-primary" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {filteredOrders.length > 0 ? filteredOrders.map(order => (
-                        <div key={order.orderId} className="flex items-center justify-between p-3 rounded-lg border border-border/50 dark:border-white/5 bg-background shadow-sm">
-                            <div className="flex-1 mr-4">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-medium text-sm">{order.label}</span>
-                                    {order.status === 'draft' && <Badge variant="outline" className="text-[10px] bg-yellow-50 text-yellow-700 border-yellow-200">Draft</Badge>}
+
+                {/* Active Orders */}
+                <div className="lg:col-span-8 flex flex-col border border-border/50 dark:border-white/5 rounded-xl bg-card overflow-hidden h-full">
+                    <div className="p-4 border-b border-border/50 dark:border-white/5 flex justify-between items-center bg-muted/30">
+                        <h3 className="font-semibold text-sm">Active Orders ({filteredOrders.length})</h3>
+                        <Button size="sm" onClick={() => sendAllDrafts(patient.id, activeCategory)}>
+                            <Send className="w-3.5 h-3.5 mr-2" />
+                            Sign & Send
+                        </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        {filteredOrders.length > 0 ? filteredOrders.map(order => (
+                            <div key={order.orderId} className="flex items-center justify-between p-3 rounded-lg border border-border/50 dark:border-white/5 bg-background shadow-sm">
+                                <div className="flex-1 mr-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-medium text-sm">{order.label}</span>
+                                        {order.status === 'draft' && <Badge variant="outline" className="text-[10px] bg-yellow-50 text-yellow-700 border-yellow-200">Draft</Badge>}
+                                    </div>
+                                    {order.category === 'medication' && (
+                                        <Input
+                                            type="text"
+                                            placeholder="Add instructions..."
+                                            value={order.instructions || ''}
+                                            onChange={(e) => updateOrder(patient.id, order.orderId, { instructions: e.target.value })}
+                                            className="mt-1 w-full h-8 text-xs bg-transparent border-border/50 focus:ring-primary/20"
+                                        />
+                                    )}
                                 </div>
-                                {order.category === 'medication' && (
-                                    <Input
-                                        type="text"
-                                        placeholder="Add instructions..."
-                                        value={order.instructions || ''}
-                                        onChange={(e) => updateOrder(patient.id, order.orderId, { instructions: e.target.value })}
-                                        className="mt-1 w-full h-8 text-xs bg-transparent border-border/50 focus:ring-primary/20"
-                                    />
-                                )}
+                                <div className="flex items-center gap-3">
+                                    <select
+                                        value={order.priority}
+                                        onChange={e => updateOrder(patient.id, order.orderId, { priority: e.target.value as OrderPriority })}
+                                        className="h-8 text-xs bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    >
+                                        <option value="routine">Routine</option>
+                                        <option value="urgent">Urgent</option>
+                                        <option value="STAT">STAT</option>
+                                    </select>
+                                    <Button
+                                        size="sm"
+                                        variant={order.status === 'draft' ? 'default' : 'secondary'}
+                                        onClick={() => updateOrder(patient.id, order.orderId, { status: 'sent' })}
+                                    >
+                                        {order.status === 'draft' ? 'Send' : 'Update'}
+                                    </Button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <select
-                                    value={order.priority}
-                                    onChange={e => updateOrder(patient.id, order.orderId, { priority: e.target.value as OrderPriority })}
-                                    className="h-8 text-xs bg-background border border-input rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                >
-                                    <option value="routine">Routine</option>
-                                    <option value="urgent">Urgent</option>
-                                    <option value="STAT">STAT</option>
-                                </select>
-                                <Button
-                                    size="sm"
-                                    variant={order.status === 'draft' ? 'default' : 'secondary'}
-                                    onClick={() => updateOrder(patient.id, order.orderId, { status: 'sent' })}
-                                >
-                                    {order.status === 'draft' ? 'Send' : 'Update'}
-                                </Button>
+                        )) : (
+                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                                <ClipboardList className="w-12 h-12 mb-3 opacity-20" />
+                                <p className="text-sm">No active orders</p>
                             </div>
-                        </div>
-                    )) : (
-                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                            <ClipboardList className="w-12 h-12 mb-3 opacity-20" />
-                            <p className="text-sm">No active orders</p>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -292,8 +327,19 @@ const PatientDetailPage: React.FC = () => {
 
     const patient = useMemo(() => patients.find(p => p.id === id), [patients, id]);
 
+    // Critical Fix 6: Render tabs only after patient is loaded
+    if (isLoading && !patient) {
+        return (
+            <div className="flex items-center justify-center h-screen bg-background">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <p className="text-sm text-muted-foreground">Loading patient data...</p>
+                </div>
+            </div>
+        );
+    }
+
     if (!patient) {
-        if (isLoading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
         return <div className="flex items-center justify-center h-screen">Patient not found</div>;
     }
 
@@ -341,6 +387,7 @@ const PatientDetailPage: React.FC = () => {
                     {activeTab === 'vitals' && <VitalsRedesigned patient={patient} />}
                     {activeTab === 'medview' && <MedViewRedesigned patient={patient} />}
                     {activeTab === 'rounds' && <RoundsRedesigned patient={patient} />}
+                    {/* Discharge is handled via routing, but if we navigate back or use tab param */}
                     {activeTab === 'discharge' && <div className="p-4 text-center">Redirecting to Discharge Module...</div>}
                 </div>
             </div>

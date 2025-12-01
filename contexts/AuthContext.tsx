@@ -7,7 +7,7 @@ interface AuthContextType {
     currentUser: User | null;
     login: (email: string, password: string) => Promise<void>;
     signup: (email: string, password: string) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
     isLoading: boolean;
     error: string | null;
 }
@@ -40,8 +40,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
-    console.log("DEBUG: AuthProvider render, user:", currentUser?.email);
-
     // Helper to map Firebase user to App user
     const mapFirebaseUser = (user: any): User => {
         const role = user.email?.includes('admin') ? 'Admin' : user.email?.includes('intern') ? 'Intern' : 'Doctor';
@@ -54,40 +52,59 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     useEffect(() => {
+        let mounted = true;
+
         // Safety timeout to prevent infinite loading
         const safetyTimeout = setTimeout(() => {
-            if (isLoading) {
+            if (mounted && isLoading) {
                 console.warn("DEBUG: Auth initialization timed out");
                 setIsLoading(false);
-                setError("Connection timed out. Running in offline/demo mode.");
+                // Don't set error here to avoid blocking UI if it's just slow
             }
         }, 5000);
 
-        const auth = getAuthInstance();
-        if (getIsFirebaseInitialized() && auth) {
-            const unsubscribe = onAuthStateChanged(auth, (user) => {
-                clearTimeout(safetyTimeout);
-                if (user) {
-                    setCurrentUser(mapFirebaseUser(user));
-                } else {
-                    setCurrentUser(null);
+        const initialize = async () => {
+            const auth = getAuthInstance();
+            if (getIsFirebaseInitialized() && auth) {
+                // Remove multiple listeners by returning unsubscribe
+                const unsubscribe = onAuthStateChanged(auth, (user) => {
+                    if (!mounted) return;
+                    clearTimeout(safetyTimeout);
+
+                    if (user) {
+                        const mappedUser = mapFirebaseUser(user);
+                        setCurrentUser(mappedUser);
+                    } else {
+                        setCurrentUser(null);
+                    }
+                    setIsLoading(false);
+                });
+                return unsubscribe;
+            } else {
+                // Fallback to local storage for demo mode
+                const storedUser = localStorage.getItem('medflow_user');
+                if (storedUser) {
+                    try {
+                        setCurrentUser(JSON.parse(storedUser));
+                    } catch (e) {
+                        console.error("Failed to parse stored user", e);
+                        localStorage.removeItem('medflow_user');
+                    }
                 }
-                setIsLoading(false);
-            });
-            return () => {
-                unsubscribe();
                 clearTimeout(safetyTimeout);
-            };
-        } else {
-            // Fallback to local storage for demo mode
-            const storedUser = localStorage.getItem('medflow_user');
-            if (storedUser) {
-                setCurrentUser(JSON.parse(storedUser));
+                setIsLoading(false);
+                return () => {};
             }
+        };
+
+        const unsubscribePromise = initialize();
+
+        return () => {
+            mounted = false;
             clearTimeout(safetyTimeout);
-            setIsLoading(false);
-        }
-    }, []);
+            unsubscribePromise.then(unsub => unsub && unsub());
+        };
+    }, []); // Empty dependency array, run once
 
     const login = async (email: string, password: string) => {
         console.log("DEBUG: login called with", email);
@@ -98,23 +115,34 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const auth = getAuthInstance();
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                // Explicitly update state to avoid race conditions with onAuthStateChanged
-                setCurrentUser(mapFirebaseUser(userCredential.user));
-                setIsLoading(false);
+                // Do NOT set state here if onAuthStateChanged handles it,
+                // BUT for fast feedback we can set it optimistically or wait for listener.
+                // The listener handles it, but might be async.
+                // To avoid race condition where redirect happens before state update:
+                // We await the state update effectively by letting the listener trigger.
+                // However, listener is async.
+                // Better: we rely on the listener for the *initial* load, but for manual login, we can set it.
+                // But setting it twice causes re-renders.
+                // Let's stick to listener for consistency, but ensure we don't resolve this promise until state is stable?
+                // No, simpler: just wait.
             } catch (err: any) {
                 console.error("Login failed", err);
                 setError(err.message || 'Failed to login');
                 setIsLoading(false);
+                throw err; // Re-throw so caller knows it failed
             }
         } else {
             // Mock Login
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 800)); // Simulate network
             const user = MOCK_USERS[email.toLowerCase()];
             if (user && MOCK_USER_CREDENTIALS[email.toLowerCase() as keyof typeof MOCK_USER_CREDENTIALS] === password) {
                 setCurrentUser(user);
                 localStorage.setItem('medflow_user', JSON.stringify(user));
             } else {
-                setError('Invalid email or password.');
+                const err = new Error('Invalid email or password.');
+                setError(err.message);
+                setIsLoading(false);
+                throw err;
             }
             setIsLoading(false);
         }
@@ -127,33 +155,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             const auth = getAuthInstance();
             try {
                 const { createUserWithEmailAndPassword } = await import('firebase/auth');
-                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                // Explicitly update state to avoid race conditions
-                setCurrentUser(mapFirebaseUser(userCredential.user));
-                setIsLoading(false);
+                await createUserWithEmailAndPassword(auth, email, password);
+                // Listener handles state
             } catch (err: any) {
                 console.error("Signup failed", err);
                 setError(err.message || 'Failed to create account');
                 setIsLoading(false);
+                throw err;
             }
         } else {
-            setError("Cannot create account in Demo Mode");
+            const err = new Error("Cannot create account in Demo Mode");
+            setError(err.message);
             setIsLoading(false);
+            throw err;
         }
     };
 
     const logout = async () => {
+        setIsLoading(true);
         if (getIsFirebaseInitialized()) {
             const auth = getAuthInstance();
             try {
                 await signOut(auth);
-                // Explicitly clear state
                 setCurrentUser(null);
             } catch (e) { console.error(e); }
         } else {
             setCurrentUser(null);
             localStorage.removeItem('medflow_user');
         }
+        setIsLoading(false);
     };
 
     return (

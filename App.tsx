@@ -8,6 +8,9 @@ import { DashboardLayout } from './components/layout/DashboardLayout';
 import { CommandPalette } from './components/ui/command-palette';
 import { AIChatDrawer } from './components/ai/AIChatDrawer';
 
+// Eager load Discharge Summary to prevent mounting issues
+import DischargeSummaryPage from './pages/DischargeSummaryPage';
+
 // Helper to handle chunk load errors (e.g., after deployment)
 const lazyLoad = (importFunc: () => Promise<any>) => {
     return React.lazy(() => {
@@ -30,7 +33,7 @@ const ConsultantViewPage = lazyLoad(() => import('./pages/ConsultantViewPage'));
 const ReceptionPage = lazyLoad(() => import('./pages/ReceptionPage'));
 const TriagePage = lazyLoad(() => import('./pages/TriagePage'));
 const PatientDetailPage = lazyLoad(() => import('./pages/PatientDetailPage'));
-const DischargeSummaryPage = React.lazy(() => import('./pages/DischargeSummaryPage'));
+// DischargeSummaryPage is now eager loaded
 const DischargePrintView = lazyLoad(() => import('./pages/DischargePrintView'));
 const LoginPage = lazyLoad(() => import('./pages/LoginPage'));
 const NotFoundPage = lazyLoad(() => import('./pages/NotFoundPage'));
@@ -94,7 +97,11 @@ const AppRoutes: React.FC = () => {
                     <Route path="/consultant" element={<ConsultantViewPage />} />
                     <Route path="/reception" element={<ReceptionPage />} />
                     <Route path="/triage" element={<TriagePage />} />
-                    <Route path="/patient/:id/discharge" element={<DischargeSummaryPage />} />
+                    <Route path="/patient/:id/discharge" element={
+                        <React.Suspense fallback={<div className="p-8 text-center text-muted-foreground">Loading Discharge Summary...</div>}>
+                            <DischargeSummaryPage />
+                        </React.Suspense>
+                    } />
                     <Route path="/patient/:id/discharge/print" element={<DischargePrintView />} />
                     {/* Updated Patient Detail Route to support tabs */}
                     <Route path="/patient/:id/:tab?" element={<PatientDetailPage />} />

@@ -77,6 +77,14 @@ const PatientList: React.FC<{ title: string; patients: Patient[]; onSelect: (id:
     </Card>
 );
 
+const SkeletonDashboardCards = () => (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-pulse mt-8">
+        {[1, 2, 3].map(i => (
+            <div key={i} className="h-32 bg-muted/50 rounded-xl"></div>
+        ))}
+    </div>
+);
+
 const DashboardPage: React.FC = () => {
     const { patients, setSelectedPatientId, isLoading } = usePatient();
     const navigate = useNavigate();
@@ -105,9 +113,20 @@ const DashboardPage: React.FC = () => {
         navigate(`/patient/${id}`);
     };
 
+    // Fix: Ensure dashboard title renders instantly, showing skeleton for content if loading
     if (isLoading && patients.length === 0) {
         console.log("DEBUG: DashboardPage rendering LOADING state");
-        return <div data-testid="dashboard-loading" className="flex items-center justify-center h-screen text-muted-foreground">Loading dashboard...</div>;
+        return (
+            <div data-testid="dashboard-container" className="space-y-8 max-w-[1600px] mx-auto pb-10">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h1 data-testid="dashboard-title" className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
+                        <p className="text-muted-foreground text-sm">Loading department status...</p>
+                    </div>
+                </div>
+                <SkeletonDashboardCards />
+            </div>
+        );
     }
 
     console.log("DEBUG: DashboardPage rendering MAIN content. Patients count:", patients.length);
@@ -120,6 +139,7 @@ const DashboardPage: React.FC = () => {
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
+                    {/* Ensure data-testid="dashboard-title" is present */}
                     <h1 data-testid="dashboard-title" className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
                     <p className="text-muted-foreground text-sm">Overview of current department status.</p>
                 </div>

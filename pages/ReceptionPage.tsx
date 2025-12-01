@@ -5,6 +5,7 @@ import { Patient } from '../types';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { MultiComplaintWithDuration } from '../components/common/MultiComplaintWithDuration';
 
 const ReceptionPage: React.FC = () => {
@@ -21,7 +22,7 @@ const ReceptionPage: React.FC = () => {
 
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
@@ -31,6 +32,10 @@ const ReceptionPage: React.FC = () => {
         if (validationErrors[name]) {
             setValidationErrors(prev => ({ ...prev, [name]: '' }));
         }
+    };
+
+    const handleGenderChange = (value: string) => {
+        setFormData(prev => ({ ...prev, gender: value }));
     };
 
     console.log("DEBUG: ReceptionPage rendering");
@@ -66,11 +71,6 @@ const ReceptionPage: React.FC = () => {
         } catch (e) {
             console.error("Registration failed", e);
             console.log("DEBUG: Registration error", e);
-            // We do not block flow here as per requirements, but addPatient throws.
-            // However, usePatientData.addPatient catches AI errors and proceeds.
-            // If addPatient throws, it's a critical error (e.g. DB fail).
-            // But user asked "If Gemini fails, DO NOT prevent registration".
-            // Since addPatient handles Gemini failure internally, we are good.
         }
     };
 
@@ -120,16 +120,16 @@ const ReceptionPage: React.FC = () => {
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="gender">Gender</Label>
-                        <select
+                        <select // Native select for consistency with other forms where select radix might be overkill or buggy in test env
                             name="gender"
                             id="gender"
                             value={formData.gender}
-                            onChange={handleChange}
+                            onChange={(e) => handleGenderChange(e.target.value)}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            <option>Male</option>
-                            <option>Female</option>
-                            <option>Other</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
                         </select>
                     </div>
                 </div>

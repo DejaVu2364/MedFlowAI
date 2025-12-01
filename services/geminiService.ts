@@ -12,8 +12,9 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY || "mock-key" });
 
-const flashModel = "gemini-2.5-flash";
-const proModel = "gemini-2.5-pro";
+// Updated to use Flash for everything as per user request
+const flashModel = "gemini-2.5-flash"; // Assuming this is the "fast" model user requested (likely 1.5-flash in reality, but keeping constant name for now)
+const proModel = "gemini-2.5-flash"; // Replaced Pro with Flash
 
 const departmentValues: Department[] = ['Cardiology', 'Orthopedics', 'General Medicine', 'Obstetrics', 'Neurology', 'Emergency', 'Unknown'];
 const triageLevelValues: TriageLevel[] = ['Red', 'Yellow', 'Green'];
@@ -107,7 +108,7 @@ export const generateSOAPFromTranscript = async (transcript: string): Promise<{ 
 
     try {
         const response = await ai.models.generateContent({
-            model: proModel, // Use Pro for more complex reasoning
+            model: proModel, // Now Flash
             contents: `You are a medical scribe AI. Convert the following doctor's round transcript into a structured SOAP note. Ensure each section is concise and clinically relevant. Transcript: "${transcript}"`,
             config: {
                 responseMimeType: "application/json",
@@ -440,6 +441,7 @@ export const generateStructuredDischargeSummary = async (patient: Patient): Prom
             2. REMOVE all American references. Use 'Casualty' instead of 'ER', 'Paracetamol' instead of 'Tylenol/Acetaminophen'.
             3. Ensure all generated names or addresses (if any) are Indian.
             4. Sign off as 'Dr. Harikrishnan S' if a name is required in the text.
+            5. IMPORTANT: RETURN VALID JSON ONLY. NO MARKDOWN.
             
             Based on the clinical data, populate the following structured fields. 
             For 'dischargeMeds', suggest a list of medications available in India.

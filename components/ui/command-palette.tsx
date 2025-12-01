@@ -25,7 +25,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
-                if (isOpen) onClose(); else onClose(); // Toggle logic is in parent, this just closes if open
+                // Toggle logic should be handled by parent prop change, but here we can ensure close
+                if (isOpen) onClose();
             }
             if (e.key === 'Escape' && isOpen) {
                 onClose();
@@ -121,16 +122,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={onClose}></div>
             <div className="relative w-full max-w-2xl bg-popover rounded-xl shadow-2xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[70vh]">
                 <div className="flex items-center border-b border-border px-4 py-3 gap-3">
-                    <MagnifyingGlassIcon className="w-5 h-5 text-muted-foreground" />
+                    <MagnifyingGlassIcon className="w-5 h-5 text-muted-foreground shrink-0" />
                     <Input
-                        className="flex-1 bg-transparent border-none focus-visible:ring-0 text-lg placeholder:text-muted-foreground text-foreground h-10 shadow-none"
+                        className="flex-1 bg-transparent border-none focus-visible:ring-0 text-lg placeholder:text-muted-foreground text-foreground h-10 shadow-none px-0"
                         placeholder="Search patients, actions, or pages..."
                         value={query}
                         onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
                         autoFocus
                         data-testid="command-palette-input"
                     />
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 shrink-0">
                         <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
                             <span className="text-xs">⌘</span>K
                         </kbd>
@@ -140,7 +141,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                     </div>
                 </div>
 
-                <div className="overflow-y-auto p-2">
+                <div className="overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                     {allOptions.length === 0 ? (
                         <div className="py-12 text-center text-sm text-muted-foreground">
                             No results found for "{query}"
@@ -149,7 +150,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                         <div className="space-y-4">
                             {filteredPatients.length > 0 && (
                                 <div>
-                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider">Patients</h3>
+                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider sticky top-0 bg-popover z-10 py-1">Patients</h3>
                                     <div className="space-y-1">
                                         {filteredPatients.map((p, i) => {
                                             const isSelected = i === selectedIndex;
@@ -162,19 +163,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                                                         isSelected ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-accent/50"
                                                     )}
                                                 >
-                                                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold", isSelected ? "bg-background text-foreground" : "bg-muted text-muted-foreground")}>
+                                                    <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0", isSelected ? "bg-background text-foreground" : "bg-muted text-muted-foreground")}>
                                                         {p.name.charAt(0)}
                                                     </div>
-                                                    <div className="flex-1">
+                                                    <div className="flex-1 min-w-0">
                                                         <div className="font-medium flex items-center gap-2">
-                                                            {p.name}
-                                                            <Badge variant="outline" className="text-[10px] h-4 px-1">{p.id.slice(-4)}</Badge>
+                                                            <span className="truncate">{p.name}</span>
+                                                            <Badge variant="outline" className="text-[10px] h-4 px-1 shrink-0">{p.id.slice(-4)}</Badge>
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className="text-xs text-muted-foreground truncate">
                                                             {p.age}y • {p.gender} • {p.status}
                                                         </div>
                                                     </div>
-                                                    {isSelected && <ArrowRightOnRectangleIcon className="w-4 h-4 text-muted-foreground" />}
+                                                    {isSelected && <ArrowRightOnRectangleIcon className="w-4 h-4 text-muted-foreground shrink-0" />}
                                                 </button>
                                             );
                                         })}
@@ -184,7 +185,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
                             {actions.length > 0 && (
                                 <div>
-                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider">Actions</h3>
+                                    <h3 className="text-xs font-semibold text-muted-foreground px-2 mb-2 uppercase tracking-wider sticky top-0 bg-popover z-10 py-1">Actions</h3>
                                     <div className="space-y-1">
                                         {actions.map((a, i) => {
                                             const globalIndex = filteredPatients.length + i;
@@ -198,12 +199,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
                                                         isSelected ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-accent/50"
                                                     )}
                                                 >
-                                                    <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center", isSelected ? "bg-background" : "bg-muted")}>
+                                                    <div className={cn("h-8 w-8 rounded-lg flex items-center justify-center shrink-0", isSelected ? "bg-background" : "bg-muted")}>
                                                         <a.icon className="w-4 h-4" />
                                                     </div>
-                                                    <span className="font-medium">{a.label}</span>
+                                                    <span className="font-medium flex-1">{a.label}</span>
                                                     {/* @ts-ignore */}
-                                                    {a.category && <span className="ml-auto text-xs text-muted-foreground opacity-50">{a.category}</span>}
+                                                    {a.category && <span className="ml-auto text-xs text-muted-foreground opacity-50 shrink-0">{a.category}</span>}
                                                 </button>
                                             );
                                         })}

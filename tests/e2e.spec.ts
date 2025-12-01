@@ -1,43 +1,12 @@
 import { test, expect } from '@playwright/test';
-import fs from 'fs';
 
 test.describe('MedFlow AI E2E', () => {
     // Increase timeout for slower environments
     test.setTimeout(60000);
 
     test.beforeEach(async ({ page }) => {
-        // Log console messages to file
-        page.on('console', msg => {
-            try {
-                fs.appendFileSync('browser_logs.txt', `BROWSER: ${msg.text()}\n`);
-            } catch (e) {
-                console.error("Failed to write log", e);
-            }
-        });
-
         await page.setViewportSize({ width: 1920, height: 1080 });
         await page.goto('/');
-
-        // Mock Gemini API to prevent timeouts/hanging
-        await page.route('**/generativelanguage.googleapis.com/**', async route => {
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    candidates: [{
-                        content: {
-                            parts: [{
-                                text: JSON.stringify({
-                                    department: 'General Medicine',
-                                    suggested_triage: 'Green',
-                                    confidence: 0.95
-                                })
-                            }]
-                        }
-                    }]
-                })
-            });
-        });
 
         // Handle Login if redirected
         try {
@@ -90,9 +59,6 @@ test.describe('MedFlow AI E2E', () => {
         // Force form submission to ensure handleSubmit is called
         await page.$eval('form[data-testid="registration-form"]', (form: HTMLFormElement) => form.requestSubmit());
 
-        // Verify success message (Removed as it's not implemented in ReceptionPage)
-        // await expect(page.getByText('Patient registered successfully')).toBeVisible();
-
         // 1. Wait for Reception page to unmount (zombie view fix)
         await expect(page.getByTestId('registration-form')).toBeHidden({ timeout: 15000 });
 
@@ -116,22 +82,26 @@ test.describe('MedFlow AI E2E', () => {
         await patientCard.click({ force: true });
 
         // Verify Patient Detail Page loaded (using a visual anchor instead of URL)
-        await expect(page.getByRole('tab', { name: 'Clinical File' })).toBeVisible();
+        // Updated to use buttons instead of role="tab"
+        const clinicalTab = page.getByRole('button', { name: 'Clinical File' }).first();
+        await expect(clinicalTab).toBeVisible();
 
         // Check Tabs
-        await expect(page.getByRole('tab', { name: 'Clinical File' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'Orders' })).toBeVisible();
-        await expect(page.getByRole('tab', { name: 'MedView' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Clinical File' }).first()).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Orders' }).first()).toBeVisible();
+        await expect(page.getByRole('button', { name: 'MedView' }).first()).toBeVisible();
 
         // Default tab is MedView
         await expect(page.locator('text=Doctor-to-Doctor Handover')).toBeVisible();
 
         // Switch to Clinical File Tab
-        await page.getByRole('tab', { name: 'Clinical File' }).click();
-        await expect(page.getByRole('tab', { name: 'History' })).toBeVisible();
+        await clinicalTab.click();
+        await expect(page.getByRole('button', { name: 'History' }).first()).toBeVisible();
 
         // Switch to Orders Tab
-        await page.getByRole('tab', { name: 'Orders' }).click();
-        await expect(page.locator('text=Active Orders')).toBeVisible();
+        await page.getByRole('button', { name: 'Orders' }).first().click();
+
+        // Use first() to avoid strict mode violation if multiple elements match
+        await expect(page.locator('text=Active Orders').first()).toBeVisible();
     });
 });

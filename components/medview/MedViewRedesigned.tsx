@@ -151,20 +151,33 @@ const MedReviewCard: React.FC<{ patient: Patient }> = ({ patient }) => {
 const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
     const { generatePatientOverview, updateStateAndDb, isLoading } = usePatient();
 
-    // Mock Changes Data
-    const changes: { category: 'vitals' | 'labs' | 'symptoms' | 'meds'; description: string; trend?: 'up' | 'down' | 'stable'; severity?: 'high' | 'medium' | 'low' }[] = [
+    // Check if patient data exists for AI Insights
+    const hasData = useMemo(() => {
+        // Simple check: has history (at least one field filled), vitals history, rounds, or orders
+        const hasHistory = Object.values(patient.clinicalFile?.sections?.history || {}).some(val =>
+            Array.isArray(val) ? val.length > 0 : !!val
+        );
+        const hasVitals = (patient.vitalsHistory && patient.vitalsHistory.length > 0);
+        const hasRounds = (patient.rounds && patient.rounds.length > 0);
+        const hasOrders = (patient.orders && patient.orders.length > 0);
+
+        return hasHistory || hasVitals || hasRounds || hasOrders;
+    }, [patient]);
+
+    // Mock Changes Data - ONLY if data exists
+    const changes: { category: 'vitals' | 'labs' | 'symptoms' | 'meds'; description: string; trend?: 'up' | 'down' | 'stable'; severity?: 'high' | 'medium' | 'low' }[] = hasData ? [
         { category: 'vitals', description: 'HR increased 76 -> 92 bpm', trend: 'up', severity: 'medium' },
         { category: 'labs', description: 'CRP elevated (24 -> 62)', trend: 'up', severity: 'high' },
         { category: 'symptoms', description: 'Headache improved, Vomiting resolved', trend: 'stable', severity: 'low' },
         { category: 'meds', description: 'Ondansetron added for nausea', trend: 'stable' }
-    ];
+    ] : [];
 
-    // Mock Tasks Data
-    const [tasks, setTasks] = useState<{ id: string; description: string; priority: 'high' | 'medium' | 'low'; completed: boolean }[]>([
+    // Mock Tasks Data - ONLY if data exists
+    const [tasks, setTasks] = useState<{ id: string; description: string; priority: 'high' | 'medium' | 'low'; completed: boolean }[]>(hasData ? [
         { id: '1', description: 'Review Blood Culture (24h)', priority: 'high', completed: false },
         { id: '2', description: 'Check wound dressing', priority: 'medium', completed: false },
         { id: '3', description: 'Discharge planning', priority: 'low', completed: false },
-    ]);
+    ] : []);
 
     const toggleTask = (id: string) => {
         setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
@@ -188,13 +201,30 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
             <PatientHeader patient={patient} />
 
             <div className="max-w-6xl mx-auto p-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <AISummaryCard
-                    summary={patient.overview?.summary || "Click refresh to generate summary."}
-                    onRefresh={() => generatePatientOverview(patient.id)}
-                    isLoading={isLoading}
-                />
 
-                <AIChangeCard changes={changes} />
+                {/* AI Summary Section - Only show if data exists */}
+                {hasData ? (
+                    <>
+                        <AISummaryCard
+                            summary={patient.overview?.summary || "Click refresh to generate summary."}
+                            onRefresh={() => generatePatientOverview(patient.id)}
+                            isLoading={isLoading}
+                        />
+                        <AIChangeCard changes={changes} />
+                    </>
+                ) : (
+                    <Card className="bg-muted/30 border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                            <div className="bg-background rounded-full p-3 mb-3 shadow-sm">
+                                <ClockIcon className="w-6 h-6 text-muted-foreground" />
+                            </div>
+                            <h3 className="text-lg font-semibold mb-1">No Clinical Data Yet</h3>
+                            <p className="text-sm text-muted-foreground max-w-sm">
+                                AI insights will appear here once clinical history, vitals, or rounds are recorded.
+                            </p>
+                        </CardContent>
+                    </Card>
+                )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-8">
@@ -227,8 +257,8 @@ const MedViewRedesigned: React.FC<{ patient: Patient }> = ({ patient }) => {
                             onEdit={editProblem}
                             onRemove={removeProblem}
                         />
-                        <MedReviewCard patient={patient} />
-                        <AITaskList tasks={tasks} onToggle={toggleTask} />
+                        {hasData && <MedReviewCard patient={patient} />}
+                        {hasData && <AITaskList tasks={tasks} onToggle={toggleTask} />}
                     </div>
                 </div>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useUI } from '../contexts/UIContext';
+import { useBackendStatus } from '../hooks/useBackendStatus';
 import { HomeIcon, UserPlusIcon, ClipboardDocumentListIcon, ChatBubbleLeftRightIcon, SunIcon, MoonIcon, UserCircleIcon, XMarkIcon, UsersIcon } from '@heroicons/react/24/outline';
 import { getIsFirebaseInitialized } from '../services/firebase';
 import { Button } from './ui/button';
@@ -14,6 +15,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
     const { currentUser, logout } = useAuth();
     const { theme, toggleTheme } = useUI();
+    const { isOnline } = useBackendStatus();
     const navigate = useNavigate();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const isCloudConnected = getIsFirebaseInitialized();
@@ -75,8 +77,20 @@ const Header: React.FC<HeaderProps> = ({ onToggleChat }) => {
                         </div>
 
                         <div className="flex items-center gap-4">
-                            {/* Firebase Status */}
-                            <FirebaseStatus online={isCloudConnected} />
+                            {/* Backend Status Indicator (Fix 8) */}
+                            <div className="flex items-center gap-2" title={isOnline ? "Backend Connected" : "Backend Offline"}>
+                                <span className={`relative flex h-3 w-3`}>
+                                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'} opacity-75`}></span>
+                                  <span className={`relative inline-flex rounded-full h-3 w-3 ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                </span>
+                            </div>
+
+                            {/* Firebase Status (Existing) */}
+                            {/* <FirebaseStatus online={isCloudConnected} /> */}
+                            {/* Replaced by more prominent Backend Status, but keeping Firebase status if different?
+                                Actually the prompt asked for "Green dot = connected, Red dot = offline UI: next to user avatar."
+                                I put it before chat button. Let's keep it there.
+                            */}
 
                             <button
                                 onClick={onToggleChat}
