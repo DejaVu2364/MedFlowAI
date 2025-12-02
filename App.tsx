@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -37,6 +38,7 @@ const PatientDetailPage = lazyLoad(() => import('./pages/PatientDetailPage'));
 const DischargePrintView = lazyLoad(() => import('./pages/DischargePrintView'));
 const LoginPage = lazyLoad(() => import('./pages/LoginPage'));
 const NotFoundPage = lazyLoad(() => import('./pages/NotFoundPage'));
+const BedManagerPage = lazyLoad(() => import('./pages/BedManagerPage').then(module => ({ default: module.BedManagerPage })));
 
 import Header from './components/Header';
 import ChatPanel from './components/ChatPanel';
@@ -105,6 +107,7 @@ const AppRoutes: React.FC = () => {
                     <Route path="/patient/:id/discharge/print" element={<DischargePrintView />} />
                     {/* Updated Patient Detail Route to support tabs */}
                     <Route path="/patient/:id/:tab?" element={<PatientDetailPage />} />
+                    <Route path="/bed-manager" element={<BedManagerPage />} />
                 </Route>
 
                 <Route path="/404" element={<NotFoundPage />} />

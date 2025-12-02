@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { Patient, AuditEvent, User, PatientStatus, Vitals, VitalsRecord, SOAPNote, TeamNote, Checklist, Order, OrderCategory, Round, ClinicalFileSections, AISuggestionHistory, HistorySectionData, Allergy, VitalsMeasurements, DischargeSummary, ChiefComplaint } from '../types';
+import { Patient, AuditEvent, User, PatientStatus, Vitals, VitalsRecord, SOAPNote, TeamNote, Checklist, Order, OrderCategory, Round, AISuggestionHistory, Allergy, VitalsMeasurements, DischargeSummary, ChiefComplaint, ClinicalFile } from '../types';
 import { seedPatients, calculateTriageFromVitals, logAuditEventToServer } from '../services/api';
 import { subscribeToPatients, savePatient, updatePatientInDb, logAuditToDb, getIsFirebaseInitialized } from '../services/firebase';
 import { classifyComplaint, suggestOrdersFromClinicalFile, generateStructuredDischargeSummary, generateOverviewSummary, summarizeClinicalFile, summarizeVitals as summarizeVitalsFromService, crossCheckRound, getFollowUpQuestions as getFollowUpQuestionsFromService, composeHistoryParagraph, generateHandoverSummary as generateHandoverSummaryService, answerWithRAG, scanForMissingInfo, summarizeSection as summarizeSectionService, crossCheckClinicalFile, checkOrderSafety } from '../services/geminiService';
@@ -45,10 +45,17 @@ export const usePatientData = (currentUser: User | null) => {
             } else {
                 // Local Mode Fallback
                 try {
-                    console.log("DEBUG: Seeding patients...");
-                    const initialPatients = await seedPatients();
-                    console.log("DEBUG: Seeded patients:", initialPatients.length);
-                    setPatients(initialPatients);
+                    const stored = localStorage.getItem('medflow_patients');
+                    if (stored) {
+                        console.log("DEBUG: Loading patients from localStorage");
+                        setPatients(JSON.parse(stored));
+                    } else {
+                        console.log("DEBUG: Seeding patients...");
+                        const initialPatients = await seedPatients();
+                        console.log("DEBUG: Seeded patients:", initialPatients.length);
+                        setPatients(initialPatients);
+                        localStorage.setItem('medflow_patients', JSON.stringify(initialPatients));
+                    }
                 } catch (e) {
                     console.error("DEBUG: Seed failed", e);
                     setError('Failed to load initial data.');
@@ -73,6 +80,7 @@ export const usePatientData = (currentUser: User | null) => {
 
     // --- Helper to update state AND firebase ---
     const updateStateAndDb = useCallback((patientId: string, updater: (p: Patient) => Patient) => {
+        console.log("DEBUG: updateStateAndDb called for", patientId);
         setPatients(prev => {
             const newPatients = prev.map(p => {
                 if (p.id === patientId) {
@@ -85,6 +93,13 @@ export const usePatientData = (currentUser: User | null) => {
                 }
                 return p;
             });
+
+            console.log("DEBUG: Is Firebase Initialized?", getIsFirebaseInitialized());
+            if (!getIsFirebaseInitialized()) {
+                console.log("DEBUG: Writing to localStorage", newPatients.length);
+                localStorage.setItem('medflow_patients', JSON.stringify(newPatients));
+            }
+
             return newPatients;
         });
     }, []);
@@ -134,21 +149,20 @@ export const usePatientData = (currentUser: User | null) => {
                 results: [],
                 vitalsHistory: [],
                 clinicalFile: {
-                    id: `CF-${patientId}`,
-                    patientId,
-                    status: 'draft',
-                    aiSuggestions: {},
-                    sections: {
-                        history: {
-                            complaints: patientData.chiefComplaints.map(c => ({ symptom: c.complaint, duration: `${c.durationValue} ${c.durationUnit}` })),
-                            hpi: '',
-                            associated_symptoms: [],
-                            allergy_history: [],
-                            review_of_systems: {}
-                        },
-                        gpe: { flags: { pallor: false, icterus: false, cyanosis: false, clubbing: false, lymphadenopathy: false, edema: false } },
-                        systemic: {}
-                    }
+                    hopi: '',
+                    pmh: '',
+                    dh: '',
+                    sh: '',
+                    allergies: '',
+                    gpe: '',
+                    systemic: {
+                        cvs: '',
+                        rs: '',
+                        cns: '',
+                        abdomen: ''
+                    },
+                    inconsistencies: [],
+                    version: 1
                 },
                 rounds: [],
             };
@@ -156,7 +170,11 @@ export const usePatientData = (currentUser: User | null) => {
             if (getIsFirebaseInitialized()) {
                 await savePatient(newPatient);
             } else {
-                setPatients(prev => [newPatient, ...prev]);
+                setPatients(prev => {
+                    const updated = [newPatient, ...prev];
+                    localStorage.setItem('medflow_patients', JSON.stringify(updated));
+                    return updated;
+                });
             }
             addToast('Patient registered successfully', 'success');
         } catch (err: any) {
@@ -236,65 +254,33 @@ export const usePatientData = (currentUser: User | null) => {
         updateStateAndDb(patientId, p => ({ ...p, timeline: [newSOAP, ...p.timeline] }));
     }, [currentUser, updateStateAndDb]);
 
-    const updateClinicalFileSection = useCallback(<K extends keyof ClinicalFileSections>(
-        patientId: string, sectionKey: K, data: Partial<ClinicalFileSections[K]>
-    ) => {
+    const updateClinicalFileSection = useCallback((patientId: string, updates: Partial<ClinicalFile>) => {
         updateStateAndDb(patientId, p => {
-            const newSections = { ...p.clinicalFile.sections, [sectionKey]: { ...p.clinicalFile.sections[sectionKey], ...data } };
-            if (sectionKey === 'gpe' && 'flags' in data) { (newSections.gpe as any).flags = { ...p.clinicalFile.sections.gpe?.flags, ...(data as any).flags }; }
-            if (sectionKey === 'gpe' && 'vitals' in data) { (newSections.gpe as any).vitals = { ...p.clinicalFile.sections.gpe?.vitals, ...(data as any).vitals }; }
-            return { ...p, clinicalFile: { ...p.clinicalFile, sections: newSections } };
+            let newSystemic = p.clinicalFile.systemic;
+            if (updates.systemic) {
+                newSystemic = { ...newSystemic, ...updates.systemic };
+            }
+
+            return {
+                ...p,
+                clinicalFile: {
+                    ...p.clinicalFile,
+                    ...updates,
+                    systemic: newSystemic
+                }
+            };
         });
     }, [updateStateAndDb]);
 
-    const composeHistoryWithAI = useCallback(async (patientId: string, sectionKey: 'history', fieldKey: keyof HistorySectionData) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-
-        const historyValue = patient.clinicalFile.sections.history?.[fieldKey];
-        const seedText = typeof historyValue === 'string' ? historyValue : '';
-        const answers = (patient.clinicalFile.aiSuggestions?.history?.followUpAnswers?.[fieldKey] || {}) as Record<string, string>;
-        const questions = patient.clinicalFile.aiSuggestions?.history?.followUpQuestions?.[fieldKey] || [];
-
-        const answerMapWithQuestionText = Object.entries(answers).reduce((acc, [qId, ans]) => {
-            const questionText = questions.find(q => q.id === qId)?.text;
-            if (questionText) acc[questionText] = ans;
-            return acc;
-        }, {} as Record<string, string>);
-
-        try {
-            const { paragraph } = await composeHistoryParagraph(sectionKey, seedText, answerMapWithQuestionText);
-            updateStateAndDb(patientId, p => {
-                const newHistorySection = { ...p.clinicalFile.sections.history, [fieldKey]: paragraph };
-                return { ...p, clinicalFile: { ...p.clinicalFile, sections: { ...p.clinicalFile.sections, history: newHistorySection } } };
-            });
-        } catch (e) { setError("AI Error"); }
-    }, [patients, updateStateAndDb]);
+    const composeHistoryWithAI = useCallback(async (patientId: string, sectionKey: 'history', fieldKey: string) => {
+        // Stubbed for new Clinical File
+        console.warn("composeHistoryWithAI is deprecated in new Clinical File");
+    }, []);
 
     const signOffClinicalFile = useCallback(async (patientId: string) => {
-        if (!currentUser) return;
-        setIsLoading(true);
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-
-        const updatedFile = { ...patient.clinicalFile, status: 'signed' as const, signedAt: new Date().toISOString(), signedBy: currentUser.id };
-
-        let suggestedOrders: Order[] = [];
-        try {
-            const result = await suggestOrdersFromClinicalFile(patient.clinicalFile.sections);
-            suggestedOrders = result.map(o => ({
-                orderId: `ORD-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                patientId: patient.id, createdBy: currentUser.id, createdAt: new Date().toISOString(),
-                category: o.category, subType: o.subType, label: o.label, payload: o.payload || {}, priority: o.priority, status: 'draft',
-                ai_provenance: { prompt_id: null, rationale: o.ai_provenance?.rationale || null },
-            }));
-        } catch (e) { }
-
-        updateStateAndDb(patientId, p => ({
-            ...p, clinicalFile: updatedFile, orders: [...p.orders, ...suggestedOrders]
-        }));
-        setIsLoading(false);
-    }, [patients, currentUser, updateStateAndDb]);
+        // Stubbed for new Clinical File
+        console.warn("signOffClinicalFile is deprecated in new Clinical File");
+    }, []);
 
     const generateDischargeSummary = useCallback(async (patientId: string) => {
         const patient = patients.find(p => p.id === patientId);
@@ -378,127 +364,42 @@ export const usePatientData = (currentUser: User | null) => {
     }, [patients, updateStateAndDb]);
 
     const summarizePatientClinicalFile = useCallback(async (patientId: string) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        try {
-            const summary = await summarizeClinicalFile(patient.clinicalFile.sections);
-            updateStateAndDb(patientId, p => ({ ...p, clinicalFile: { ...p.clinicalFile, aiSummary: summary } }));
-        } catch (e) { console.error(e); }
-    }, [patients, updateStateAndDb]);
+        // Stubbed
+        console.warn("summarizePatientClinicalFile is deprecated in new Clinical File");
+    }, []);
 
     const formatHpi = useCallback(async (patientId: string) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        const hpi = patient.clinicalFile.sections.history?.hpi || '';
-        try {
-            const { paragraph } = await composeHistoryParagraph('history', hpi, {});
-            updateClinicalFileSection(patientId, 'history', { hpi: paragraph });
-        } catch (e) { console.error(e); }
-    }, [patients, updateClinicalFileSection]);
+        // Stubbed
+        console.warn("formatHpi is deprecated in new Clinical File");
+    }, []);
 
-    const checkMissingInfo = useCallback(async (patientId: string, section: keyof ClinicalFileSections) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        setIsLoading(true);
-        try {
-            const missingItems = await scanForMissingInfo(section, patient.clinicalFile.sections[section]);
-            if (missingItems.length > 0) {
-                addToast(`Missing Info in ${section}: ${missingItems.join(', ')}`, 'error');
-            } else {
-                addToast(`${section} appears complete.`, 'success');
-            }
-        } catch (e) { console.error(e); }
-        setIsLoading(false);
-    }, [patients, addToast]);
+    const checkMissingInfo = useCallback(async (patientId: string, section: string) => {
+        // Stubbed
+        console.warn("checkMissingInfo is deprecated in new Clinical File");
+    }, []);
 
-    const summarizeSection = useCallback(async (patientId: string, section: keyof ClinicalFileSections) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        setIsLoading(true);
-        try {
-            const summary = await summarizeSectionService(section, patient.clinicalFile.sections[section]);
-            // Update the specific section's summary if possible, or just toast it for now as UI might not have a dedicated field for every section summary
-            if (section === 'gpe') {
-                updateClinicalFileSection(patientId, 'gpe', { aiGeneratedSummary: summary });
-            } else {
-                // For other sections, maybe append to notes or just show
-                addToast(`Summary for ${section}: ${summary}`, 'info');
-            }
-        } catch (e) { console.error(e); }
-        setIsLoading(false);
-    }, [patients, updateClinicalFileSection, addToast]);
+    const summarizeSection = useCallback(async (patientId: string, section: string) => {
+        // Stubbed
+        console.warn("summarizeSection is deprecated in new Clinical File");
+    }, []);
 
-    const getFollowUpQuestions = useCallback(async (patientId: string, section: keyof ClinicalFileSections, fieldKey: string, context: string) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        try {
-            const questions = await getFollowUpQuestionsFromService(section, context);
-            updateStateAndDb(patientId, p => {
-                const newSuggestions = { ...p.clinicalFile.aiSuggestions };
-                if (!newSuggestions[section]) newSuggestions[section] = { followUpQuestions: {}, followUpAnswers: {} };
-                // @ts-ignore
-                newSuggestions[section].followUpQuestions[fieldKey] = questions;
-                return { ...p, clinicalFile: { ...p.clinicalFile, aiSuggestions: newSuggestions } };
-            });
-        } catch (e) { console.error(e); }
-    }, [patients, updateStateAndDb]);
+    const getFollowUpQuestions = useCallback(async (patientId: string, section: string, fieldKey: string, context: string) => {
+        // Stubbed
+        console.warn("getFollowUpQuestions is deprecated in new Clinical File");
+    }, []);
 
-    const updateFollowUpAnswer = useCallback((patientId: string, section: keyof ClinicalFileSections, questionId: string, answer: string) => {
-        updateStateAndDb(patientId, p => {
-            const newSuggestions = { ...p.clinicalFile.aiSuggestions };
-            if (!newSuggestions[section]) newSuggestions[section] = { followUpQuestions: {}, followUpAnswers: {} };
-            // @ts-ignore
-            if (!newSuggestions[section].followUpAnswers) newSuggestions[section].followUpAnswers = {};
-            // @ts-ignore
-            // We need to map questionId to the fieldKey somehow, or store answers differently.
-            // For now assuming flat structure or handling in UI.
-            // Actually UI calls: updateFollowUpAnswer(patient.id, fieldKey, q.id, opt)
-            // So we need fieldKey in arguments.
-            return p; // Placeholder until signature matches UI
-        });
-    }, [updateStateAndDb]);
+    const updateFollowUpAnswer = useCallback((patientId: string, section: string, questionId: string, answer: string) => {
+        // Stubbed
+    }, []);
 
-    // Corrected updateFollowUpAnswer to match UI usage
     const updateFollowUpAnswerCorrect = useCallback((patientId: string, fieldKey: string, questionId: string, answer: string) => {
-        updateStateAndDb(patientId, p => {
-            const newSuggestions = { ...p.clinicalFile.aiSuggestions };
-            const section = 'history'; // Assuming history for now as per UI usage
-            if (!newSuggestions[section]) newSuggestions[section] = { followUpQuestions: {}, followUpAnswers: {} };
-            // @ts-ignore
-            if (!newSuggestions[section].followUpAnswers) newSuggestions[section].followUpAnswers = {};
-            // @ts-ignore
-            if (!newSuggestions[section].followUpAnswers[fieldKey]) newSuggestions[section].followUpAnswers[fieldKey] = {};
-            // @ts-ignore
-            // The UI expects answers to be stored. The structure in types might need checking.
-            // For now, let's just store it.
-            // Actually types say followUpAnswers is Record<string, string> | Record<string, Record<string, string>>?
-            // Let's check types. Assuming simple map for now.
-            // Wait, UI does: answers[q.id] === opt.
-            // So followUpAnswers[fieldKey] should be a Record<questionId, answer>.
-            // @ts-ignore
-            newSuggestions[section].followUpAnswers[fieldKey] = { ...newSuggestions[section].followUpAnswers[fieldKey], [questionId]: answer };
-
-            return { ...p, clinicalFile: { ...p.clinicalFile, aiSuggestions: newSuggestions } };
-        });
-    }, [updateStateAndDb]);
+        // Stubbed
+    }, []);
 
     const crossCheckFile = useCallback(async (patientId: string) => {
-        const patient = patients.find(p => p.id === patientId);
-        if (!patient) return;
-        setIsLoading(true);
-        try {
-            const inconsistencies = await crossCheckClinicalFile(patient.clinicalFile.sections);
-            updateStateAndDb(patientId, p => ({
-                ...p, clinicalFile: { ...p.clinicalFile, crossCheckInconsistencies: inconsistencies }
-            }));
-            if (inconsistencies.length === 0) {
-                addToast("No inconsistencies found.", 'success');
-            } else {
-                addToast(`Found ${inconsistencies.length} potential inconsistencies.`, 'error');
-            }
-        } catch (e) { console.error(e); }
-        setIsLoading(false);
-    }, [patients, updateStateAndDb, addToast]);
+        // Stubbed
+        console.warn("crossCheckFile is deprecated in new Clinical File");
+    }, []);
 
     // --- ORDER MANAGEMENT (Fixed) ---
 

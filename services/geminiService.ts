@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AITriageSuggestion, Department, TriageLevel, SOAPNote, TeamNote, FollowUpQuestion, ComposedHistory, Patient, Order, OrderCategory, PatientOverview, Vitals, ClinicalFileSections, OrderPriority, Round, VitalsRecord, DischargeSummary } from '../types';
+import { AITriageSuggestion, Department, TriageLevel, SOAPNote, TeamNote, FollowUpQuestion, ComposedHistory, Patient, Order, OrderCategory, PatientOverview, Vitals, OrderPriority, Round, VitalsRecord, DischargeSummary, ClinicalFile } from '../types';
 import { getFromCache, setInCache } from './caching';
 
 
@@ -12,9 +12,8 @@ if (!API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY || "mock-key" });
 
-// Updated to use Flash for everything as per user request
-const flashModel = "gemini-2.5-flash"; // Assuming this is the "fast" model user requested (likely 1.5-flash in reality, but keeping constant name for now)
-const proModel = "gemini-2.5-flash"; // Replaced Pro with Flash
+const flashModel = "gemini-2.5-flash";
+const proModel = "gemini-2.5-flash";
 
 const departmentValues: Department[] = ['Cardiology', 'Orthopedics', 'General Medicine', 'Obstetrics', 'Neurology', 'Emergency', 'Unknown'];
 const triageLevelValues: TriageLevel[] = ['Red', 'Yellow', 'Green'];
@@ -79,7 +78,6 @@ export const classifyComplaint = async (complaint: string): Promise<{ data: AITr
 
     } catch (error) {
         console.error("Error classifying complaint with Gemini:", error);
-        // Rethrow the error to be handled by the UI component, which can provide better user feedback.
         throw error;
     }
 };
@@ -87,7 +85,7 @@ export const classifyComplaint = async (complaint: string): Promise<{ data: AITr
 type SOAPNoteData = Omit<SOAPNote, 'id' | 'patientId' | 'author' | 'authorId' | 'role' | 'timestamp' | 'type'>;
 
 export const generateSOAPFromTranscript = async (transcript: string): Promise<{ data: SOAPNoteData, fromCache: boolean }> => {
-    const cacheKey = `soap:${transcript.slice(0, 100)}`; // Cache based on start of transcript
+    const cacheKey = `soap:${transcript.slice(0, 100)}`;
     const cached = getFromCache<SOAPNoteData>(cacheKey);
     if (cached) {
         return { data: cached, fromCache: true };
@@ -108,7 +106,7 @@ export const generateSOAPFromTranscript = async (transcript: string): Promise<{ 
 
     try {
         const response = await ai.models.generateContent({
-            model: proModel, // Now Flash
+            model: proModel,
             contents: `You are a medical scribe AI. Convert the following doctor's round transcript into a structured SOAP note. Ensure each section is concise and clinically relevant. Transcript: "${transcript}"`,
             config: {
                 responseMimeType: "application/json",
@@ -323,12 +321,8 @@ export const generateOverviewSummary = async (patient: Patient): Promise<Patient
     }
 };
 
-export const summarizeClinicalFile = async (sections: ClinicalFileSections): Promise<string> => {
-    const context = `
-        History: ${JSON.stringify(sections.history)}
-        GPE: ${JSON.stringify(sections.gpe)}
-        Systemic Exams: ${JSON.stringify(sections.systemic)}
-    `;
+export const summarizeClinicalFile = async (clinicalFile: ClinicalFile): Promise<string> => {
+    const context = JSON.stringify(clinicalFile);
     try {
         const response = await ai.models.generateContent({
             model: proModel,
@@ -343,10 +337,8 @@ export const summarizeClinicalFile = async (sections: ClinicalFileSections): Pro
 
 type SuggestedOrder = Omit<Order, 'orderId' | 'patientId' | 'createdBy' | 'createdAt' | 'status'>;
 
-export const suggestOrdersFromClinicalFile = async (sections: ClinicalFileSections): Promise<SuggestedOrder[]> => {
-    const historyText = JSON.stringify(sections.history);
-    const gpeText = JSON.stringify(sections.gpe);
-    const examsText = JSON.stringify(sections.systemic);
+export const suggestOrdersFromClinicalFile = async (clinicalFile: ClinicalFile): Promise<SuggestedOrder[]> => {
+    const context = JSON.stringify(clinicalFile);
 
     const OrderCategoryEnum: OrderCategory[] = ["investigation", "radiology", "medication", "procedure", "nursing", "referral"];
     const OrderPriorityEnum: OrderPriority[] = ["routine", "urgent", "STAT"];
@@ -355,9 +347,7 @@ export const suggestOrdersFromClinicalFile = async (sections: ClinicalFileSectio
         const response = await ai.models.generateContent({
             model: proModel,
             contents: `You are a clinical decision support AI. Given the patient's history and examination findings, suggest relevant initial orders. Format the output as a JSON array of order objects. Include a clinical rationale for each suggestion.
-            History: "${historyText}"
-            GPE: "${gpeText}"
-            Exams: "${examsText}"`,
+            Data: "${context}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -417,7 +407,7 @@ export const generateStructuredDischargeSummary = async (patient: Patient): Prom
         Chief Complaint: ${patient.chiefComplaints?.map(c => `${c.complaint} (${c.durationValue} ${c.durationUnit})`).join(', ') || 'None'}
         
         History & Exam:
-        ${JSON.stringify(patient.clinicalFile.sections)}
+        ${JSON.stringify(patient.clinicalFile)}
         
         Hospital Course (Rounds):
         ${patient.rounds.map(r => `[${new Date(r.createdAt).toLocaleDateString()}] ${r.assessment} - ${r.plan.text}`).join('\n')}
@@ -490,12 +480,11 @@ export const generateStructuredDischargeSummary = async (patient: Patient): Prom
 };
 
 export const compileDischargeSummary = async (patient: Patient): Promise<string> => {
-    // Deprecated for new workflow but kept for fallback compatibility if needed
     const structured = await generateStructuredDischargeSummary(patient);
     return JSON.stringify(structured);
 };
 
-export const getFollowUpQuestions = async (section: keyof ClinicalFileSections, seedText: string): Promise<FollowUpQuestion[]> => {
+export const getFollowUpQuestions = async (section: string, seedText: string): Promise<FollowUpQuestion[]> => {
     try {
         const response = await ai.models.generateContent({
             model: flashModel,
@@ -532,7 +521,7 @@ export const getFollowUpQuestions = async (section: keyof ClinicalFileSections, 
     }
 };
 
-export const composeHistoryParagraph = async (section: keyof ClinicalFileSections, seedText: string, answers: Record<string, string>): Promise<ComposedHistory> => {
+export const composeHistoryParagraph = async (section: string, seedText: string, answers: Record<string, string>): Promise<ComposedHistory> => {
     const qaText = Object.entries(answers).map(([q, a]) => `Q: ${q}\nA: ${a}`).join('\n');
     try {
         const response = await ai.models.generateContent({
@@ -553,14 +542,11 @@ export const composeHistoryParagraph = async (section: keyof ClinicalFileSection
         return result || { paragraph: "Could not generate summary." };
     } catch (error) {
         console.error(`Error composing history for ${section}:`, error);
-        return { paragraph: `Based on the initial report of "${seedText}", the following was noted: ${Object.values(answers).join('. ')}.` }; // Simple fallback
+        return { paragraph: `Based on the initial report of "${seedText}", the following was noted: ${Object.values(answers).join('. ')}.` };
     }
 };
 
-// --- NEW ROUNDS AI FUNCTIONS ---
-
 export const summarizeChangesSinceLastRound = async (lastRoundAt: string, patient: Patient): Promise<{ summary: string; highlights: string[] }> => {
-    // This is a simplified version. A real implementation would fetch changes from a backend.
     const context = `
         Summarize changes since the last round at ${new Date(lastRoundAt).toLocaleString()}.
         Current Vitals: ${JSON.stringify(patient.vitals)}
@@ -591,7 +577,7 @@ export const summarizeChangesSinceLastRound = async (lastRoundAt: string, patien
 
 export const generateSOAPForRound = async (patient: Patient): Promise<Partial<Round>> => {
     const context = `
-        Patient Clinical File: ${JSON.stringify(patient.clinicalFile.sections)}
+        Patient Clinical File: ${JSON.stringify(patient.clinicalFile)}
         Latest Vitals: ${JSON.stringify(patient.vitals)}
         Active Orders: ${patient.orders.filter(o => o.status === 'sent' || o.status === 'in_progress').map(o => o.label).join(', ')}
         Previous Round: ${JSON.stringify(patient.rounds.find(r => r.status === 'signed'))}
@@ -628,8 +614,7 @@ export const generateSOAPForRound = async (patient: Patient): Promise<Partial<Ro
 
 export const crossCheckRound = async (patient: Patient, roundDraft: Round): Promise<{ contradictions: string[]; missingFollowups: string[] }> => {
     const context = `
-        Patient History: ${JSON.stringify(patient.clinicalFile.sections.history)}
-        Patient GPE: ${JSON.stringify(patient.clinicalFile.sections.gpe)}
+        Patient History: ${JSON.stringify(patient.clinicalFile)}
         Draft Round Note: ${JSON.stringify(roundDraft)}
     `;
     try {
@@ -655,7 +640,6 @@ export const crossCheckRound = async (patient: Patient, roundDraft: Round): Prom
     }
 };
 
-// --- NEW VITALS TAB AI FUNCTION ---
 export const summarizeVitals = async (vitalsHistory: VitalsRecord[]): Promise<{ summary: string }> => {
     const formattedHistory = vitalsHistory.slice(0, 10).map(v =>
         `At ${new Date(v.recordedAt).toLocaleTimeString()}: ` +
@@ -689,7 +673,7 @@ export const summarizeVitals = async (vitalsHistory: VitalsRecord[]): Promise<{ 
 export const generateHandoverSummary = async (patient: Patient): Promise<string> => {
     const context = `
         Patient: ${patient.name}, ${patient.age}, ${patient.gender}, ID: ${patient.id}
-        Diagnosis/Problem: ${patient.clinicalFile.aiSummary || patient.chiefComplaints?.map(c => c.complaint).join(', ')}
+        Diagnosis/Problem: ${patient.chiefComplaints?.map(c => c.complaint).join(', ')}
         
         Recent Rounds: ${patient.rounds.slice(0, 2).map(r => r.assessment + ' - ' + r.plan.text).join('; ')}
         Current Vitals: ${JSON.stringify(patient.vitals)}
@@ -718,9 +702,8 @@ export const generateHandoverSummary = async (patient: Patient): Promise<string>
     }
 };
 
-// --- NEW AI FUNCTIONS FOR MISSING FEATURES ---
 
-export const scanForMissingInfo = async (section: keyof ClinicalFileSections, currentData: any): Promise<string[]> => {
+export const scanForMissingInfo = async (section: string, currentData: any): Promise<string[]> => {
     const context = JSON.stringify(currentData);
     try {
         const response = await ai.models.generateContent({
@@ -745,7 +728,7 @@ export const scanForMissingInfo = async (section: keyof ClinicalFileSections, cu
     }
 };
 
-export const summarizeSection = async (section: keyof ClinicalFileSections, currentData: any): Promise<string> => {
+export const summarizeSection = async (section: string, currentData: any): Promise<string> => {
     const context = JSON.stringify(currentData);
     try {
         const response = await ai.models.generateContent({
@@ -759,8 +742,8 @@ export const summarizeSection = async (section: keyof ClinicalFileSections, curr
     }
 };
 
-export const crossCheckClinicalFile = async (sections: ClinicalFileSections): Promise<string[]> => {
-    const context = JSON.stringify(sections);
+export const crossCheckClinicalFile = async (clinicalFile: ClinicalFile): Promise<string[]> => {
+    const context = JSON.stringify(clinicalFile);
     try {
         const response = await ai.models.generateContent({
             model: proModel,
@@ -787,9 +770,9 @@ export const crossCheckClinicalFile = async (sections: ClinicalFileSections): Pr
 export const checkOrderSafety = async (newOrder: Order, patient: Patient): Promise<{ safe: boolean; warning?: string }> => {
     const context = `
         Patient: ${patient.name}, Age: ${patient.age}
-        Allergies: ${JSON.stringify(patient.clinicalFile.sections.history?.allergy_history || [])}
+        Allergies: ${patient.clinicalFile.allergies || 'None'}
         Active Meds: ${patient.orders.filter(o => o.category === 'medication' && (o.status === 'in_progress' || o.status === 'sent')).map(o => o.label).join(', ')}
-        Conditions: ${JSON.stringify(patient.clinicalFile.sections.history?.past_medical_history || '')}
+        Conditions: ${patient.clinicalFile.pmh || 'None'}
         New Order: ${newOrder.label} (${newOrder.category})
     `;
 
@@ -798,7 +781,8 @@ export const checkOrderSafety = async (newOrder: Order, patient: Patient): Promi
             model: flashModel,
             contents: `Analyze if the new order is safe for this patient. Check for drug-drug interactions, allergy contraindications, or condition contraindications.
             Return JSON: { "safe": boolean, "warning": string (if unsafe, explain why briefly) }
-            \n\nContext: ${context}`,
+            
+            Context: ${context}`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -814,99 +798,41 @@ export const checkOrderSafety = async (newOrder: Order, patient: Patient): Promi
         return JSON.parse(response.text);
     } catch (error) {
         console.error("Error checking order safety:", error);
-        return { safe: true }; // Fail open to avoid blocking care
+        return { safe: true };
     }
 };
 
-export const generateClinicalFileFromTranscript = async (transcript: string): Promise<Partial<ClinicalFileSections>> => {
+// --- NEW FUNCTION FOR CLINICAL FILE REBUILD ---
+
+export const cleanAndStructureClinicalText = async (text: string, sectionName: string): Promise<{ clean_text: string, inconsistencies: string[] }> => {
     try {
         const response = await ai.models.generateContent({
-            model: proModel,
-            contents: `You are an advanced medical scribe AI. Your task is to listen to a doctor-patient conversation (transcript) and extract structured clinical data to populate the patient's Clinical File.
+            model: flashModel,
+            contents: `You are a clinical documentation assistant. Clean and structure the following text for the "${sectionName}" section of a medical record.
+            Also identify any potential inconsistencies within the text or logical contradictions.
             
-            Transcript: "${transcript}"
+            Text: "${text}"
             
-            Extract the following sections if present:
-            - history: { complaints, hpi, past_medical_history, drug_history, family_history, personal_social_history, allergy_history }
-            - gpe: { general_appearance, build, flags (pallor, icterus, etc.) }
-            - systemic: { cvs, rs, abdomen, cns, msk } (summaries for each)
-            
-            Return a JSON object matching the ClinicalFileSections structure. Omit fields that are not mentioned.
-            For 'complaints', return an array of { symptom, duration }.
-            For 'allergy_history', return an array of { substance, reaction, severity }.
-            For 'flags' in GPE, return a boolean map.
-            `,
+            Return JSON:
+            {
+                "clean_text": "string (formatted, professional medical text)",
+                "inconsistencies": ["string (list of potential inconsistencies found, if any)"]
+            }`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        history: {
-                            type: Type.OBJECT,
-                            properties: {
-                                complaints: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            symptom: { type: Type.STRING },
-                                            duration: { type: Type.STRING }
-                                        }
-                                    }
-                                },
-                                hpi: { type: Type.STRING },
-                                past_medical_history: { type: Type.STRING },
-                                drug_history: { type: Type.STRING },
-                                family_history: { type: Type.STRING },
-                                personal_social_history: { type: Type.STRING },
-                                allergy_history: {
-                                    type: Type.ARRAY,
-                                    items: {
-                                        type: Type.OBJECT,
-                                        properties: {
-                                            substance: { type: Type.STRING },
-                                            reaction: { type: Type.STRING },
-                                            severity: { type: Type.STRING }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        gpe: {
-                            type: Type.OBJECT,
-                            properties: {
-                                general_appearance: { type: Type.STRING },
-                                build: { type: Type.STRING },
-                                flags: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        pallor: { type: Type.BOOLEAN },
-                                        icterus: { type: Type.BOOLEAN },
-                                        cyanosis: { type: Type.BOOLEAN },
-                                        clubbing: { type: Type.BOOLEAN },
-                                        lad: { type: Type.BOOLEAN },
-                                        edema: { type: Type.BOOLEAN }
-                                    }
-                                }
-                            }
-                        },
-                        systemic: {
-                            type: Type.OBJECT,
-                            properties: {
-                                cvs: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
-                                rs: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
-                                abdomen: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
-                                cns: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } },
-                                msk: { type: Type.OBJECT, properties: { summary: { type: Type.STRING } } }
-                            }
-                        }
-                    }
+                        clean_text: { type: Type.STRING },
+                        inconsistencies: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    },
+                    required: ['clean_text', 'inconsistencies']
                 }
             }
         });
         return JSON.parse(response.text);
     } catch (error) {
-        console.error("Error generating clinical file from transcript:", error);
-        throw error;
+        console.error("Error cleaning text:", error);
+        return { clean_text: text, inconsistencies: [] };
     }
 };

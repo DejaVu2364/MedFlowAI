@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, updateDoc, doc, onSnapshot, query, orderBy, setDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -24,15 +25,18 @@ let auth: any = null;
 let isFirebaseInitialized = false;
 
 try {
-    // We check if the apiKey has been configured (not the default placeholder)
-    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY" && !firebaseConfig.apiKey.includes("YOUR_API_KEY")) {
+    // Check for force local mode (set by tests)
+    const forceLocal = typeof window !== 'undefined' && window.localStorage.getItem('medflow_force_local') === 'true';
+
+    // We check if the apiKey has been configured (not the default placeholder) AND not forced local
+    if (!forceLocal && firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY" && !firebaseConfig.apiKey.includes("YOUR_API_KEY")) {
         const app = initializeApp(firebaseConfig);
         db = getFirestore(app);
         auth = getAuth(app);
         isFirebaseInitialized = true;
         console.log("✅ Firebase initialized successfully");
     } else {
-        console.warn("⚠️ Firebase keys missing or placeholder used. Running in LOCAL DEMO MODE.");
+        console.warn(`⚠️ Firebase keys missing or placeholder used. Running in LOCAL DEMO MODE. (Force Local: ${forceLocal})`);
     }
 } catch (e) {
     console.error("❌ Firebase initialization failed:", e);
@@ -88,9 +92,11 @@ export const savePatient = async (patient: Patient) => {
 export const updatePatientInDb = async (patientId: string, updates: Partial<Patient>) => {
     if (!isFirebaseInitialized || !db) return;
     try {
+        console.log("DEBUG: Updating patient in DB", patientId, Object.keys(updates));
         const docRef = doc(db, 'patients', patientId);
         const sanitizedUpdates = sanitizeForFirestore(updates);
         await updateDoc(docRef, sanitizedUpdates);
+        console.log("DEBUG: Patient updated successfully");
     } catch (e) {
         console.error("Error updating patient:", e);
     }

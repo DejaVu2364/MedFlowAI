@@ -29,13 +29,14 @@ import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
 
 // External Components
-import ClinicalFileRedesigned from '../components/clinical/ClinicalFileRedesigned';
+import ClinicalFileEditor from '../components/clinical/ClinicalFileEditor';
 import MedViewRedesigned from '../components/medview/MedViewRedesigned';
 import { VitalsRedesigned } from '../components/vitals/VitalsRedesigned';
 import { RoundsRedesigned } from '../components/rounds/RoundsRedesigned';
 import { PatientJourney } from '../components/patient/PatientJourney';
 import { OrdersReportList } from '../components/clinical/OrdersReportList';
 import { ReportViewer } from '../components/clinical/ReportViewer';
+import { InvestigationTab } from '../components/investigations/InvestigationTab';
 
 // --- PATIENT HEADER ---
 
@@ -347,6 +348,7 @@ const PatientDetailPage: React.FC = () => {
         { id: 'medview', label: 'MedView', icon: Pill },
         { id: 'clinical', label: 'Clinical File', icon: FileText },
         { id: 'orders', label: 'Orders', icon: ClipboardList },
+        { id: 'investigations', label: 'Investigations', icon: Beaker },
         { id: 'vitals', label: 'Vitals', icon: Activity },
         { id: 'rounds', label: 'Rounds', icon: Stethoscope },
         { id: 'discharge', label: 'Discharge', icon: FileText },
@@ -382,8 +384,9 @@ const PatientDetailPage: React.FC = () => {
                 </div>
 
                 <div className="min-h-[500px]">
-                    {activeTab === 'clinical' && currentUser && <ClinicalFileRedesigned patient={patient} />}
+                    {activeTab === 'clinical' && currentUser && <ClinicalFileEditor patient={patient} />}
                     {activeTab === 'orders' && <OrdersTab patient={patient} />}
+                    {activeTab === 'investigations' && <InvestigationTab patient={patient} />}
                     {activeTab === 'vitals' && <VitalsRedesigned patient={patient} />}
                     {activeTab === 'medview' && <MedViewRedesigned patient={patient} />}
                     {activeTab === 'rounds' && <RoundsRedesigned patient={patient} />}

@@ -234,93 +234,24 @@ export interface Allergy {
     severity: 'Mild' | 'Moderate' | 'Severe' | '';
 }
 
-export interface HistorySectionData {
-    complaints: Complaint[]; // REPLACED chief_complaint & duration with this array
-    hpi: string;
-    associated_symptoms: string[];
-    past_medical_history: string;
-    past_surgical_history: string;
-    drug_history: string;
-    allergy_history: Allergy[];
-    family_history: string;
-    personal_social_history: string;
-    menstrual_obstetric_history: string;
-    socioeconomic_lifestyle: string;
-    review_of_systems: { [key: string]: boolean | string };
-}
-
-export interface GPESectionData {
-    general_appearance: 'well' | 'ill' | 'toxic' | 'cachectic' | '';
-    vitals: Partial<VitalsMeasurements>;
-    build: 'normal' | 'obese' | 'cachectic' | '';
-    hydration: 'normal' | 'mild' | 'moderate' | 'severe' | '';
-    flags: {
-        pallor: boolean;
-        icterus: boolean;
-        cyanosis: boolean;
-        clubbing: boolean;
-        lymphadenopathy: boolean;
-        edema: boolean;
-    };
-    height_cm: number;
-    weight_kg: number;
-    bmi: number;
-    remarks: string;
-    aiGeneratedSummary?: string;
-}
-
-export interface SystemicExamSystemData {
-    autofill?: boolean;
-    inspection: string;
-    palpation: string;
-    percussion: string;
-    auscultation: string;
-    summary: string;
-}
-
-export interface SystemicExamSectionData {
-    cvs?: Partial<SystemicExamSystemData>;
-    rs?: Partial<SystemicExamSystemData>;
-    cns?: Partial<SystemicExamSystemData>;
-    abdomen?: Partial<SystemicExamSystemData>;
-    msk?: Partial<SystemicExamSystemData>;
-    skin?: Partial<SystemicExamSystemData>;
-    other?: Partial<SystemicExamSystemData>;
-}
-
-export interface ClinicalFileSections {
-    history: Partial<HistorySectionData>;
-    gpe: Partial<GPESectionData>;
-    systemic: Partial<SystemicExamSectionData>;
-}
-
-export interface AISuggestionHistory {
-    complaints?: Complaint[];
-    structured_hpi?: string;
-    past_medical_history?: string;
-    allergy_history?: Allergy[];
-    family_history?: string;
-    followUpQuestions?: {
-        [fieldKey: string]: FollowUpQuestion[];
-    };
-    followUpAnswers?: {
-        [fieldKey: string]: Record<string, string>;
-    };
-}
-
 export interface ClinicalFile {
-    id: string;
-    patientId: string;
-    status: 'draft' | 'signed';
-    signedAt?: string;
-    signedBy?: string;
-    aiSummary?: string;
-    missingInfo?: string[];
-    crossCheckInconsistencies?: string[];
-    aiSuggestions?: {
-        history?: Partial<AISuggestionHistory>;
+    hopi: string;
+    pmh: string;
+    dh: string;
+    sh: string;
+    allergies: string;
+
+    gpe: string;
+
+    systemic: {
+        cvs: string;
+        rs: string;
+        cns: string;
+        abdomen: string;
     };
-    sections: ClinicalFileSections;
+
+    inconsistencies: string[];   // populated by AI consistency checker
+    version: number;             // increments after each save
 }
 
 export interface DischargeMedication {
@@ -377,7 +308,7 @@ export interface Patient {
     age: number;
     gender: 'Male' | 'Female' | 'Other';
     contact: string;
-    chiefComplaints: ChiefComplaint[]; // REPLACED chief_complaint & duration with this array
+    chiefComplaints: ChiefComplaint[];
     status: PatientStatus;
     vitals?: VitalsMeasurements;
     vitalsHistory: VitalsRecord[];
@@ -395,7 +326,7 @@ export interface Patient {
     activeProblems?: ActiveProblem[];
 }
 
-export type Page = 'dashboard' | 'reception' | 'triage' | 'patientDetail' | 'dischargeSummary';
+export type Page = 'dashboard' | 'reception' | 'triage' | 'patientDetail' | 'dischargeSummary' | 'bedManager';
 
 export interface ChatMessage {
     role: 'user' | 'model';
@@ -443,21 +374,81 @@ export type AppContextType = {
     updateDraftRound: (patientId: string, roundId: string, updates: Partial<Round>) => void;
     signOffRound: (patientId: string, roundId: string, acknowledgedContradictions: string[]) => Promise<void>;
     getRoundContradictions: (patientId: string, roundId: string) => Promise<string[]>;
-    updateClinicalFileSection: <K extends keyof ClinicalFileSections>(
-        patientId: string,
-        sectionKey: K,
-        data: Partial<ClinicalFileSections[K]>
-    ) => void;
+    updateClinicalFileSection: (patientId: string, updates: Partial<ClinicalFile>) => void;
     formatHpi: (patientId: string) => Promise<void>;
-    checkMissingInfo: (patientId: string, sectionKey: keyof ClinicalFileSections) => void;
-    summarizeSection: (patientId: string, sectionKey: keyof ClinicalFileSections) => Promise<void>;
+    checkMissingInfo: (patientId: string, sectionKey: string) => void;
+    summarizeSection: (patientId: string, sectionKey: string) => Promise<void>;
     crossCheckFile: (patientId: string) => Promise<void>;
-    acceptAISuggestion: (patientId: string, field: keyof AISuggestionHistory) => void;
+    acceptAISuggestion: (patientId: string, field: string) => void;
     clearAISuggestions: (patientId: string, section: 'history') => void;
-    getFollowUpQuestions: (patientId: string, sectionKey: 'history', fieldKey: keyof HistorySectionData, seedText: string) => Promise<void>;
-    updateFollowUpAnswer: (patientId: string, fieldKey: keyof HistorySectionData, questionId: string, answer: string) => void;
-    composeHistoryWithAI: (patientId: string, sectionKey: 'history', fieldKey: keyof HistorySectionData) => Promise<void>;
+    getFollowUpQuestions: (patientId: string, sectionKey: 'history', fieldKey: string, seedText: string) => Promise<void>;
+    updateFollowUpAnswer: (patientId: string, fieldKey: string, questionId: string, answer: string) => void;
+    composeHistoryWithAI: (patientId: string, sectionKey: 'history', fieldKey: string) => Promise<void>;
     theme: 'light' | 'dark';
     toggleTheme: () => void;
     updateStateAndDb: (patientId: string, updater: (p: Patient) => Patient) => void;
 };
+
+// --- Bed Manager Types ---
+
+export type BedStatus =
+    | "occupied"
+    | "vacant"
+    | "cleaning"
+    | "maintenance"
+    | "reserved";
+
+export interface Bed {
+    id: string;                 // B-101-A
+    patientId?: string;         // If occupied
+    status: BedStatus;
+    lastCleanedAt: number;
+    occupiedSince?: number;
+    predictedDischargeAt?: number; // from AI
+}
+
+export interface Room {
+    id: string;              // 101, 102, etc
+    beds: Bed[];
+}
+
+export interface Ward {
+    id: string;              // ICU-1, ICU-2, MED-1, SURG-3
+    name: string;
+    department: string;      // Medicine, Surgery, ICU, OBG, Ortho…
+    rooms: Room[];
+}
+
+export interface BedManagerState {
+    wards: Ward[];
+    lastUpdated: number;
+}
+
+// --- Investigation Types ---
+
+export type InvestigationType = "lab" | "radiology";
+
+export type ReportFormat = "pdf" | "image" | "text";
+
+export interface InvestigationOrder {
+    id: string;
+    type: InvestigationType;
+    name: string;
+    status: "ordered" | "pending" | "processing" | "completed";
+    orderedAt: number;
+    completedAt?: number;
+    reportId?: string;
+    priority?: "routine" | "urgent" | "stat";
+}
+
+export interface InvestigationReport {
+    id: string;
+    orderId: string;
+    patientId: string;
+    type: InvestigationType;
+    format: ReportFormat;
+    url: string; // Firebase Storage URL
+    uploadedAt: number;
+    aiSummary?: string;
+    aiFlags?: string[];
+}
