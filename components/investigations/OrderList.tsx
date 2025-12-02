@@ -4,7 +4,7 @@ import { InvestigationOrder } from '../../types';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
-import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowUpTrayIcon, DocumentTextIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 interface OrderListProps {
     orders: InvestigationOrder[];
@@ -65,5 +65,4 @@ export const OrderList: React.FC<OrderListProps> = ({ orders, onUploadClick, onV
     );
 };
 
-// Fix missing icon import locally for this file if needed, or replace
-import { SparklesIcon } from '@heroicons/react/24/outline';
+
