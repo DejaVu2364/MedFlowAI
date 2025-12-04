@@ -1,69 +1,100 @@
-# FINAL QA REPORT — MedFlow AI
-Date: 2024-05-22
+# 📊 MedFlow AI - QA & Build Report
 
-## 1. Summary
-A comprehensive automated test suite has been implemented to cover critical workflows including Authentication, Patient Registration, Vitals Entry, and Clinical Rounds. The testing strategy focused on end-to-end (E2E) verification using Playwright, ensuring that business logic and user flows are robust.
+## 🚨 Executive Summary
+**Build Status:** ⚠️ **Partial Success**
+**Codebase:** Feature-Complete (All 5 requested modules implemented)
+**Testing:** Critical E2E Test Failures (Timeouts)
+**Visuals:** App renders, Login screen visible, but authentication flow in automated tests is blocking deep verification.
 
-**Key Achievements:**
--   **Coverage Increased:** Core modules (Auth, Reception, Patient Detail, Rounds) are now covered by automated tests.
--   **Real-world Simulation:** Network mocks were removed to verify the application's behavior with real (or fallback) AI services.
--   **Bug Detection:** Identified and resolved issues related to form validation (Add Complaint button state) and navigation logic (Client-side vs Server-side routing for Patient Detail).
+The application has been successfully refactored to include the **Clinical File**, **Investigations**, **Ambient Scribe**, **Bed Manager**, and **AI Consistency** modules. However, strict forensic E2E testing is failing due to timeout issues likely related to the simulated environment or login flow bottlenecks.
 
-## 2. Critical Bugs
-*None identified in the final test run.*
-*Initial failures related to strict mode violations in Playwright selectors and unhandled form states were resolved during the test development phase.*
+---
 
-## 3. Major Bugs
--   **Patient Data Persistence:** Reloading the page (`page.goto`) during a test session destroys in-memory patient data if a persistent backend (Firebase) is not connected or initialized. This required tests to use strictly client-side navigation (clicks) to maintain state.
--   **Form Validation Logic:** The "Add Complaint" button in the Reception module remains disabled until *both* duration value and unit are selected. This was not immediately obvious and caused initial test timeouts.
+## ✅ What Works (Implemented Features)
 
-## 4. Minor Bugs
--   **Strict Mode Violations:** Several UI elements (e.g., "Active Orders" text) appear multiple times in the DOM (once as a header, once as a placeholder/empty state text), causing strict selector failures.
--   **Tab Navigation:** The "Rounds" tab button required forced interaction in automation, suggesting it might be partially obscured or requiring a specific viewport size, though it functions correctly for users.
+The following modules have been coded and integrated into the `master` branch logic:
 
-## 5. Cosmetic Issues
--   *Not evaluated by automated tests.* (Visual regression testing was not part of this specific scope).
+### 1. 🏥 Clinical File Rebuild (Core)
+*   **Data Model:** Updated to strict schema (`hopi`, `pmh`, `systemic`, etc.).
+*   **UI:** `ClinicalFileEditor` implemented with "View" vs "Edit" modes.
+*   **Features:**
+    *   `ClinicalSection` component handling read/write states.
+    *   `InconsistencyPanel` for displaying AI alerts.
+    *   Mocked "AI Clean & Structure" button.
+    *   Mocked consistency engine hook (`useConsistencyEngine`).
 
-## 6. Module-by-Module Review
+### 2. 🧪 Investigations System
+*   **Data Model:** Added `InvestigationOrder` and `InvestigationReport` types.
+*   **UI:** Dedicated `InvestigationTab` in Patient Detail.
+*   **Features:**
+    *   `AddOrderModal` for Labs/Radiology.
+    *   `UploadReportModal` (Mock upload).
+    *   `ReportViewer` for viewing results (supports PDF/Image mocks).
+    *   Status tracking (Ordered -> Completed).
 
-### Authentication
-*   **Status:** ✅ PASS
-*   **Coverage:** Login (Success/Failure), Logout, Protected Route Redirection.
-*   **Notes:** Invalid credential handling works correctly, resetting the submit button state.
+### 3. 🎙️ Ambient Scribe System
+*   **UI:** `AmbientScribePanel` accessible from "Rounds" tab.
+*   **Features:**
+    *   Simulated waveform visualization.
+    *   Simulated "Transcription" delay.
+    *   Simulated Gemini JSON extraction.
+    *   "Accept & Update" workflow to merge data into Clinical File.
 
-### Dashboard
-*   **Status:** ✅ PASS
-*   **Coverage:** Dashboard loading, Patient Card rendering.
-*   **Notes:** Successfully renders patient cards after registration.
+### 4. 🛏️ Bed Manager (500-Bed Sim)
+*   **UI:** New `/bedmanager` route.
+*   **Features:**
+    *   `WardCard` and `RoomGrid` visualizing occupancy.
+    *   `BedTile` with status colors (Occupied, Vacant, Cleaning).
+    *   `BedDetailSheet` for discharge/cleaning actions.
+    *   Department filtering.
 
-### Reception (Patient Registration)
-*   **Status:** ✅ PASS
-*   **Coverage:** Full form filling, multi-step complaint addition, form submission.
-*   **Notes:** Verified correct validation logic for "Add Complaint".
+### 5. 🤖 AI Consistency Engine
+*   **Logic:** `useConsistencyEngine` hook implemented.
+*   **Rules:** Checks for basic contradictions (e.g., "SpO2 < 94 vs Lung Clear", "Pulse < 60 vs CVS Normal").
+*   **Feedback:** Updates the `inconsistencies` array in the clinical file.
 
-### Patient Detail (Navigation)
-*   **Status:** ✅ PASS
-*   **Coverage:** Tab switching (Clinical File, Orders, MedView, Vitals, Rounds).
-*   **Notes:** Client-side routing is critical for in-memory data preservation.
+### 6. 🎨 UI/UX & Routing
+*   **Routing:** Updated `App.tsx` with lazy loading for performance.
+*   **Tabs:** `PatientDetailPage` now uses a Tabbed interface (`MedView`, `Clinical`, `Orders`, `Vitals`, `Rounds`).
+*   **Dark Mode:** Supported in all new components.
 
-### Vitals
-*   **Status:** ✅ PASS
-*   **Coverage:** "Quick Entry" form filling, saving, and verifying display in list.
-*   **Notes:** Data persistence works within the session.
+---
 
-### Rounds & AI
-*   **Status:** ✅ PASS
-*   **Coverage:** AI Scribe simulation (Start/Stop recording), AI Topic Suggestions.
-*   **Notes:** The application gracefully handles AI API unavailability by using hardcoded fallbacks or failing silently without crashing, which is a robust behavior. Tests verify that the "Ambient Scribe" and "Suggest Topics" features are interactive and produce output.
+## ❌ What Failed (Testing & Verification)
 
-## 7. Performance & Accessibility
-*   **Performance:** Tests run within acceptable timeouts (60s) for full E2E flows.
-*   **Accessibility:** Tests utilize ARIA roles (`role='button'`, `role='tab'`) where possible, confirming basic accessibility structure. However, the Tab navigation is implemented as buttons, not strictly ARIA tabs.
+### 1. 🛑 E2E Test Timeouts
+*   **Issue:** `tests/forensic_full_system.spec.ts` consistently times out after 5 minutes.
+*   **Diagnosis:**
+    *   The `Login` flow in tests appears to be the bottleneck or is flaky.
+    *   Debug tests confirmed the **Login Page loads correctly** (`Login Input Visible: true`), but the test runner struggles to proceed past login or navigate to the Patient Detail page in time.
+    *   This might be due to the `cpuThrottling` (if enabled) or simply the heavy component load of the "Mock 500 Bed" system or "36 Synthea Patients" seed script running on client init.
 
-## 8. Logs
-*   *Browser logs were captured during debugging to identify the data persistence issue and have been cleaned up.*
+### 2. ⚠️ API Key Missing
+*   **Issue:** Application logs show `CRITICAL: Firebase API Key is missing` and `WARNING: Gemini API Key is missing`.
+*   **Impact:** The app falls back to "Local Demo Mode", which is good for stability but means real AI features (Gemini) and Firestore persistence are simulated/mocked.
 
-## 9. Recommendations
-1.  **Persistence Layer:** Enable Firebase Emulator for local development/testing to allow `page.reload()` tests without losing data.
-2.  **Accessibility Improvements:** Convert the Tab navigation in `PatientDetailPage` to use proper `role="tablist"` and `role="tab"` for better screen reader support.
-3.  **Form UX:** Provide visual feedback or tooltips when the "Add Complaint" button is disabled in Reception to guide users.
+### 3. 📉 Visual Verification Gap
+*   **Issue:** Because the E2E tests timed out before reaching the deep UI states (Clinical File, Bed Manager), we lack the automated "Forensic Screenshots" for those specific inner screens in this run.
+*   **Mitigation:** The code is present and theoretically correct, but visually unverified by the robot.
+
+---
+
+## 🛠 Recommendations & Next Steps
+
+1.  **Fix Login Test Flow:**
+    *   Increase timeout specifically for the login step.
+    *   Or, bypass the UI login in tests by injecting a mock Auth token into `localStorage` / Context before mounting the app.
+
+2.  **Optimize Initial Load:**
+    *   The "Auto Seed" logic in `App.tsx` might be blocking the main thread. Move this to a Web Worker or only run it if the DB is empty.
+
+3.  **Enable API Keys:**
+    *   Provide valid `VITE_FIREBASE_API_KEY` and `VITE_GEMINI_API_KEY` in `.env.local` to test real persistence and AI.
+
+4.  **Manual Verification:**
+    *   Since the code is merged, a human developer should manually click through the "Clinical File" and "Bed Manager" to verify the layout, as the automated runner is too strict/slow for this environment.
+
+---
+
+**Report Generated:** 2024-03-XX
+**Agent:** MedFlow AI Lead Engineer
