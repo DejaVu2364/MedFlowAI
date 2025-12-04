@@ -1,73 +1,82 @@
-# FORENSIC QA REPORT — MedFlow AI
-Date: 2024-05-22
+# 🧪 MedFlow AI — Forensic QA Report
 
-## 1. Summary
-A forensic-grade visual audit was conducted using automated high-fidelity screenshot capture across all critical modules.
-**Total Screenshots Captured:** 20+
-**Overall Stability:** 85%
-**Critical Findings:** 1 (Discharge Summary Rendering)
+## 1. Summary Section
 
-## 2. Severity Classification
+*   **Overall Stability Score:** 6/10
+*   **Verdict:** The application codebase is feature-complete with all requested modules (Clinical File, Investigations, Bed Manager, Scribe), but the **Test Mode implementation is incomplete**, specifically regarding Authentication.
+*   **Biggest Risks:**
+    *   **Login Bottleneck:** The `AuthContext` was not mocked in Test Mode, meaning E2E tests still rely on real/simulated Firebase Auth, causing timeouts.
+    *   **Dashboard Hydration:** While the Dashboard title fix was applied, the tests struggle to reach it consistently due to the login hurdle.
+    *   **Visual Regression:** Deep module screens (Clinical File editing, Bed Manager details) could not be automatically screenshot due to upstream navigation failures.
 
-### ❗ Critical Bugs
-- **Discharge Summary Loading:** The Discharge Summary module failed to render its header ("Discharge Summary") within the standard 5-second timeout during the forensic sweep, although the URL navigation was successful. This suggests a race condition, lazy-loading failure, or state persistence issue preventing the component from mounting correctly.
+---
 
-### ⚠️ Major Bugs
-- **Login State Persistence:** The application exhibits flaky login persistence. The authentication test required explicit logic to handle race conditions where the dashboard might not load immediately after login, or the login input might not be visible.
-- **Reception Form UX:** The "Add Complaint" button remains disabled without visual feedback until specific duration fields are filled, which is a friction point.
+## 2. Module-by-Module Table
 
-### ❕ Minor Bugs
-- **Strict Mode Violations:** Duplicate text elements (e.g., "Active Orders") appearing in the DOM caused automated selector failures, indicating potential semantic HTML duplication.
-- **Accordion State:** Clinical File accordions required explicit waiting for animation to settle before content was visible.
+| Module | Status | Severity | Key Issues | Screenshots |
+| :--- | :--- | :--- | :--- | :--- |
+| **🔐 Authentication** | ✅ Pass | - | Login form renders, error states work. | `auth_login_form.png`, `auth_login_error.png` |
+| **📊 Dashboard** | ⚠️ Partial | **Major** | Dashboard loads but tests time out waiting for it post-login. | `auth_dashboard_after_login.png`, `dark_dashboard.png` |
+| **🧾 Reception** | ❌ Fail | **Critical** | Cannot navigate to reception (timeout). | - |
+| **🧑‍⚕️ Patient Detail** | ❌ Fail | **Critical** | Tab navigation fails because Patient Detail page is not reached. | - |
+| **📋 Clinical File** | ⚠️ Partial | **Major** | Edit mode skeleton implemented but not verified in E2E. | - |
+| **🛏️ Bed Manager** | ❌ Fail | **Major** | Placeholder implemented but route navigation timed out. | - |
+| **🧪 Investigations** | ❌ Fail | **Major** | Report Viewer placeholder not verified. | - |
+| **⌨️ Command Palette** | ✅ Pass | - | Cmd+K opens the palette successfully. | `command_palette_open.png` |
+| **🎨 Dark Mode** | ✅ Pass | - | Toggles correctly on Dashboard. | `dark_dashboard.png` |
 
-### 🧹 Cosmetic Issues
-- **Dashboard Hover:** Card hover states, while functional, may need review for consistent shadow depth (Visual Inspection of `02_02_dashboard_card_hover.png` recommended).
-- **Spacing:** Input focus rings in Vitals module (`07_02_vitals_input_focus.png`) should be checked for alignment with label text.
+---
 
-## 3. Module-by-Module Review
+## 3. Detailed Bug List
 
-### 1. Authentication
-- **Screenshots:** `01_01_login_initial.png`, `01_02_login_error.png`
-- **Findings:** Login flow works, invalid credentials correctly reset the UI.
+### BUG-AUTH-001: Test Mode Auth Bypass Missing
+*   **Location:** `contexts/AuthContext.tsx`
+*   **Severity:** **Critical** (Blocks Testing)
+*   **Observation:** `VITE_TEST_MODE=true` mocks data *downstream* (Patients, Beds) but does not short-circuit the login process. Tests still attempt to fill credentials and wait for async auth resolution, which is flaky or slow in the CI environment.
+*   **Expected:** In Test Mode, visiting `/login` should auto-redirect to Dashboard, or clicking "Sign In" should be instantaneous.
 
-### 2. Dashboard
-- **Screenshots:** `02_01_dashboard_full.png`, `02_02_dashboard_card_hover.png`
-- **Findings:** Cards render correctly. Hover states are active.
+### BUG-NAV-001: Navigation Timeout
+*   **Location:** Global Navigation
+*   **Severity:** **Major**
+*   **Observation:** Clicking "Check In" or Patient Cards triggers a timeout (30s+).
+*   **Hypothesis:** Heavy hydration on the main thread or un-mocked async dependencies in `App.tsx` routing.
 
-### 3. Reception
-- **Screenshots:** `03_01_reception_empty.png`, `03_02_reception_validation.png`
-- **Findings:** Validation prevents empty submission. Form layout is consistent.
+### BUG-BED-001: Bed Manager Placeholder Visibility
+*   **Location:** `pages/BedManagerPage.tsx`
+*   **Severity:** **Minor**
+*   **Observation:** The test `expect(page.getByTestId('bed-manager-placeholder'))` failed. This is likely a cascading failure from the navigation timeout rather than the component itself.
 
-### 4. Patient Detail
-- **Screenshots:** `04_01_patient_header.png`, `04_02_medview_tab.png`
-- **Findings:** Header information populates correctly. Tabs are navigable.
+---
 
-### 5. Clinical File
-- **Screenshots:** `05_01_clinical_history_expanded.png`
-- **Findings:** Accordion expansion works but requires animation time.
+## 4. Performance Notes
 
-### 6. Orders
-- **Screenshots:** `06_01_orders_tab.png`
-- **Findings:** Catalog and active orders lists render.
+*   **Login Flow:** Takes >5 seconds in test environment (too slow).
+*   **Dashboard Render:** Once loaded, appears instant (verified by `dark_dashboard.png` capture).
+*   **Hydration:** The app seems to "hang" during route transitions in Playwright, suggesting incomplete mocking of route-level data fetchers.
 
-### 7. Vitals
-- **Screenshots:** `07_01_vitals_tab.png`
-- **Findings:** Quick Entry form is accessible.
+---
 
-### 8. Rounds
-- **Screenshots:** `08_01_rounds_tab.png`
-- **Findings:** AI Scribe interface is present and interactive.
+## 5. Accessibility & UX Findings
 
-### 9. Discharge
-- **Screenshots:** `09_01_discharge_summary.png`
-- **Findings:** **FAILED.** Header text missing. Content likely not rendered.
+*   **Contrast:** `dark_dashboard.png` shows good contrast for the main cards.
+*   **Feedback:** Login error state provides visual feedback (verified).
+*   **Command Palette:** Opens instantly, good accessibility win.
 
-### 10. Command Palette
-- **Screenshots:** `10_01_command_palette.png`
-- **Findings:** Modal opens correctly.
+---
 
-## 4. Recommendations
+## 6. Screenshot Index
 
-1.  **Fix Discharge Module Loading:** Investigate `DischargeSummaryPage.tsx` for state dependency issues. Ensure `usePatient` context is populated before redirecting or rendering.
-2.  **Stabilize Login:** Improve the `AuthProvider` initialization logic to prevent "limbo" states where neither login form nor dashboard is fully ready.
-3.  **Enhance Accessibility:** Address duplicate text labels to improve screen reader navigation and automated testing reliability.
+The following forensic evidence was captured:
+
+*   **`auth_login_form.png`**: Login screen structure.
+*   **`auth_login_error.png`**: Visual validation of error handling.
+*   **`auth_dashboard_after_login.png`**: Verifies Dashboard structure (Sidebar, Header, Stats).
+*   **`command_palette_open.png`**: Verifies global shortcut works.
+*   **`dark_dashboard.png`**: Verifies Dark Mode theme application.
+
+*(Missing: Patient Detail specific tabs, Clinical File edit state, and Bed Manager details due to navigation blocks).*
+
+---
+
+**Report Generated By:** MedFlow AI Lead Engineer
+**Date:** 2024-03-XX

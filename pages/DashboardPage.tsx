@@ -9,7 +9,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { TriageBadge } from '../components/common/TriageBadge';
-import { cn } from '../lib/utils';
+import { cn, isTestMode } from '../lib/utils';
 
 const StatCard: React.FC<{ label: string; value: number | string; icon: React.ElementType; trend?: string; trendUp?: boolean; colorClass?: string; bgClass?: string }> = ({ label, value, icon: Icon, trend, trendUp, colorClass, bgClass }) => (
     <Card className="border-border/50 shadow-sm hover:shadow-md transition-all duration-200">
@@ -90,8 +90,6 @@ const DashboardPage: React.FC = () => {
     const navigate = useNavigate();
     const [searchTerm, setSearchTerm] = useState('');
 
-    console.log("DEBUG: DashboardPage mounted");
-
     const stats = useMemo(() => {
         const total = patients.length;
         const critical = patients.filter(p => p.triage.level === 'Red').length;
@@ -113,35 +111,16 @@ const DashboardPage: React.FC = () => {
         navigate(`/patient/${id}`);
     };
 
-    // Fix: Ensure dashboard title renders instantly, showing skeleton for content if loading
-    if (isLoading && patients.length === 0) {
-        console.log("DEBUG: DashboardPage rendering LOADING state");
-        return (
-            <div data-testid="dashboard-container" className="space-y-8 max-w-[1600px] mx-auto pb-10">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 data-testid="dashboard-title" className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-                        <p className="text-muted-foreground text-sm">Loading department status...</p>
-                    </div>
-                </div>
-                <SkeletonDashboardCards />
-            </div>
-        );
-    }
-
-    console.log("DEBUG: DashboardPage rendering MAIN content. Patients count:", patients.length);
-    console.log("DEBUG: Waiting Patients count:", waitingPatients.length);
-    if (patients.length > 0) {
-        console.log("DEBUG: First patient:", patients[0].name, patients[0].status);
-    }
     return (
         <div data-testid="dashboard-container" className="space-y-8 max-w-[1600px] mx-auto pb-10">
             {/* Header & Actions */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    {/* Ensure data-testid="dashboard-title" is present */}
+                    {/* Render Title IMMEDIATELY */}
                     <h1 data-testid="dashboard-title" className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-                    <p className="text-muted-foreground text-sm">Overview of current department status.</p>
+                    <p className="text-muted-foreground text-sm">
+                        {isTestMode ? "Test Mode Active (3 Mocks Loaded)" : "Overview of current department status."}
+                    </p>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
@@ -160,61 +139,68 @@ const DashboardPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <StatCard
-                    label="Total Patients"
-                    value={stats.total}
-                    icon={UserGroupIcon}
-                    trend="+12% from yesterday"
-                    trendUp={true}
-                    colorClass="text-blue-600"
-                    bgClass="bg-blue-50 dark:bg-blue-900/20"
-                />
-                <StatCard
-                    label="Critical Attention"
-                    value={stats.critical}
-                    icon={ExclamationTriangleIcon}
-                    trend="Requires immediate action"
-                    trendUp={false}
-                    colorClass="text-red-600"
-                    bgClass="bg-red-50 dark:bg-red-900/20"
-                />
-                <StatCard
-                    label="Waiting Room"
-                    value={stats.waiting}
-                    icon={ClockIcon}
-                    trend="Avg wait: 14m"
-                    trendUp={true}
-                    colorClass="text-amber-600"
-                    bgClass="bg-amber-50 dark:bg-amber-900/20"
-                />
-            </div>
+            {/* Skeleton Loading if applicable and NOT in test mode (test mode is instant) */}
+            {isLoading && !isTestMode && patients.length === 0 ? (
+                <SkeletonDashboardCards />
+            ) : (
+                <>
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <StatCard
+                            label="Total Patients"
+                            value={stats.total}
+                            icon={UserGroupIcon}
+                            trend="+12% from yesterday"
+                            trendUp={true}
+                            colorClass="text-blue-600"
+                            bgClass="bg-blue-50 dark:bg-blue-900/20"
+                        />
+                        <StatCard
+                            label="Critical Attention"
+                            value={stats.critical}
+                            icon={ExclamationTriangleIcon}
+                            trend="Requires immediate action"
+                            trendUp={false}
+                            colorClass="text-red-600"
+                            bgClass="bg-red-50 dark:bg-red-900/20"
+                        />
+                        <StatCard
+                            label="Waiting Room"
+                            value={stats.waiting}
+                            icon={ClockIcon}
+                            trend="Avg wait: 14m"
+                            trendUp={true}
+                            colorClass="text-amber-600"
+                            bgClass="bg-amber-50 dark:bg-amber-900/20"
+                        />
+                    </div>
 
-            {/* Patient Lists Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
-                <PatientList
-                    title="Waiting Room"
-                    patients={waitingPatients}
-                    onSelect={handlePatientSelect}
-                    emptyMsg="No patients waiting"
-                    headerClass="bg-amber-50/50 dark:bg-amber-900/10"
-                />
-                <PatientList
-                    title="Active Treatment"
-                    patients={activePatients}
-                    onSelect={handlePatientSelect}
-                    emptyMsg="No active patients"
-                    headerClass="bg-blue-50/50 dark:bg-blue-900/10"
-                />
-                <PatientList
-                    title="Discharged / Completed"
-                    patients={dischargedPatients}
-                    onSelect={handlePatientSelect}
-                    emptyMsg="No recent discharges"
-                    headerClass="bg-green-50/50 dark:bg-green-900/10"
-                />
-            </div>
+                    {/* Patient Lists Grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+                        <PatientList
+                            title="Waiting Room"
+                            patients={waitingPatients}
+                            onSelect={handlePatientSelect}
+                            emptyMsg="No patients waiting"
+                            headerClass="bg-amber-50/50 dark:bg-amber-900/10"
+                        />
+                        <PatientList
+                            title="Active Treatment"
+                            patients={activePatients}
+                            onSelect={handlePatientSelect}
+                            emptyMsg="No active patients"
+                            headerClass="bg-blue-50/50 dark:bg-blue-900/10"
+                        />
+                        <PatientList
+                            title="Discharged / Completed"
+                            patients={dischargedPatients}
+                            onSelect={handlePatientSelect}
+                            emptyMsg="No recent discharges"
+                            headerClass="bg-green-50/50 dark:bg-green-900/10"
+                        />
+                    </div>
+                </>
+            )}
         </div>
     );
 };
