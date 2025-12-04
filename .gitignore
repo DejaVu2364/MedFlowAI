@@ -20,5 +20,6 @@ test-results/
 *~
 .temp/
 temp_env.txt
-
+screenshots_forensic/
+screenshots/
 .vercel
